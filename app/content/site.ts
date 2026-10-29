@@ -8,6 +8,11 @@ import type { ContentLang } from "../lib/lang";
 export const SITE = {
   universityEn: "Ambo University",
   campusEn: "Hachalu Hundessa Campus",
+  /** Site header: both names always show, whatever language is selected */
+  headerAm: "ሃጫሉ ሁንዴሳ ካምፓስ ግቢ ጉባኤ",
+  headerOm: "Yaa'ii Mooraa Kaampaasii Hacaaluu Hundeessaa",
+  /** Church logo for the header. Put the file in public/ and set e.g. "/church-logo.png" */
+  churchLogo: null as string | null,
 };
 
 type HomeContent = {
@@ -43,10 +48,10 @@ export const HOME: Record<ContentLang, HomeContent> = {
     university: "Yuunivarsiitii Amboo",
     campus: "Kaampaasii Hacaaluu Hundeessaa",
     church: "Mana Amantaa Tulluu Araaraa Qulqulluu Mikaa'el",
-    title: "Gara Gibi Gubae keenyaatti baga nagaan dhuftan",
+    title: "Gara Yaa'ii Mooraa keenyaatti baga nagaan dhuftan",
     tagline: "Yeroo yuunivarsiitii keessa turtan amantii, barnootaa fi tajaajilaan waliin haa guddannu.",
     about:
-      "Gibi Gubaen walga'ii barattoota ijoollee Waldaa Kiristaanaa Ortodoksii Tewaahidoo Itiyoophiyaa ta'anii, mooraa keessatti barnoota hafuuraa itti baratan, itti kadhatanii fi kutaalee keessatti itti tajaajilanidha.",
+      "Yaa'iin Mooraa walga'ii barattoota ijoollee Waldaa Kiristaanaa Ortodoksii Tewaahidoo Itiyoophiyaa ta'anii, mooraa keessatti barnoota hafuuraa itti baratan, itti kadhatanii fi kutaalee keessatti itti tajaajilanidha.",
     activities: [
       { title: "Barnoota amantii", body: "Koorsiiwwan miseensota haaraa fi duraaniif sagantaan kennaman." },
       { title: "Kadhannaa fi faarfannaa", body: "Kadhannaa waloo, qo'annoo faarfannaa fi qophii ayyaanaa." },
