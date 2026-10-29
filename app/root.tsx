@@ -11,6 +11,7 @@ import {
 } from "react-router";
 import type { Route } from "./+types/root";
 import { LangSwitch } from "./components/LangSwitch";
+import { botLink } from "./content/bot";
 import { HOME, SITE } from "./content/site";
 import { DEFAULT_LANG, langFromCookie } from "./lib/lang";
 import { getUser } from "./lib/session.server";
@@ -31,6 +32,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   const user = await getUser(request, env);
   return {
     lang: langFromCookie(request.headers.get("Cookie")),
+    botUrl: botLink(env.TELEGRAM_BOT_USERNAME),
     user,
     canReview: user ? can(user.role, "registration:review") : false,
   };
@@ -58,7 +60,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
           </Link>
           <nav aria-label="Main">
             <NavLink to="/" end>Home</NavLink>
-            <NavLink to="/register">Register</NavLink>
+            {data?.botUrl && <a href={data.botUrl}>Register</a>}
             {data?.canReview && <NavLink to="/admin/registrations">Review</NavLink>}
             {data?.user ? <NavLink to="/account">My account</NavLink> : <NavLink to="/login">Sign in</NavLink>}
           </nav>

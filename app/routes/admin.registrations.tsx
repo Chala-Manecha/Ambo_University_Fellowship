@@ -1,7 +1,9 @@
 import { and, asc, eq } from "drizzle-orm";
 import { Form, useNavigation } from "react-router";
 import type { Route } from "./+types/admin.registrations";
+import { MEMBER_DECISION } from "../content/bot";
 import { getDb, schema } from "../db";
+import { sendMessage } from "../lib/bot.server";
 import { formatYear, reviewTransition } from "../lib/registration";
 import { requirePermission } from "../lib/session.server";
 
@@ -35,7 +37,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
 }
 
 export async function action({ request, context }: Route.ActionArgs) {
-  const { env } = context.cloudflare;
+  const { env, ctx } = context.cloudflare;
   const reviewer = await requirePermission(request, env, "registration:review");
   const form = await request.formData();
   const id = String(form.get("memberId") ?? "");
@@ -55,10 +57,21 @@ export async function action({ request, context }: Route.ActionArgs) {
   if (!next) return { message: "This registration was already reviewed." };
 
   // status guard in WHERE prevents two reviewers racing on the same row
-  await db
+  const updated = await db
     .update(schema.members)
     .set({ status: next, reviewedBy: reviewer.id, reviewedAt: new Date() })
-    .where(and(eq(schema.members.id, id), eq(schema.members.status, "pending")));
+    .where(and(eq(schema.members.id, id), eq(schema.members.status, "pending")))
+    .returning({ userId: schema.members.userId, contentLanguage: schema.members.contentLanguage });
+
+  // Tell the member on Telegram, in the language they chose
+  const row = updated[0];
+  if (row) {
+    const u = await db.query.user.findFirst({ where: eq(schema.user.id, row.userId), columns: { telegramId: true } });
+    if (u?.telegramId) {
+      const text = MEMBER_DECISION[row.contentLanguage][next === "active" ? "approved" : "rejected"];
+      ctx.waitUntil(sendMessage(env, u.telegramId, text));
+    }
+  }
 
   return { message: next === "active" ? "Registration approved." : "Registration rejected." };
 }

@@ -16,6 +16,8 @@ export default function Home() {
   const lang = root?.lang ?? DEFAULT_LANG;
   const t = HOME[lang];
   const signedIn = Boolean(root?.user);
+  // Registration starts in the Telegram bot (it collects a verified phone number)
+  const botUrl = root?.botUrl ?? "#";
 
   return (
     <div lang={lang} className={`home lang-${lang}`}>
@@ -24,7 +26,7 @@ export default function Home() {
         <h1>{t.title}</h1>
         <p className="hero-tagline">{t.tagline}</p>
         <div className="hero-actions" lang="en">
-          <Link to="/register" className="btn btn-primary">Register as a member</Link>
+          <a href={botUrl} className="btn btn-primary">Register as a member</a>
           {!signedIn && <Link to="/login" className="btn btn-quiet">Sign in</Link>}
         </div>
       </section>
@@ -58,7 +60,7 @@ export default function Home() {
             <li key={s}>{s}</li>
           ))}
         </ol>
-        <Link to="/register" className="btn btn-primary" lang="en">Start registration</Link>
+        <a href={botUrl} className="btn btn-primary" lang="en">Start registration</a>
       </section>
     </div>
   );

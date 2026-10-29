@@ -7,6 +7,7 @@ export type SessionUser = {
   name: string;
   image: string | null;
   role: Role;
+  telegramId: string | null;
   telegramUsername: string | null;
 };
 
@@ -19,6 +20,7 @@ export async function getUser(request: Request, env: Env): Promise<SessionUser |
     name: u.name,
     image: u.image ?? null,
     role: isRole(u.role) ? u.role : "member",
+    telegramId: u.telegramId ?? null,
     telegramUsername: u.telegramUsername ?? null,
   };
 }

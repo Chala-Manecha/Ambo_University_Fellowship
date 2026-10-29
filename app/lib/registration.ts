@@ -8,6 +8,21 @@ export const ethiopianPhone = z
   .refine((s) => /^(\+251|251|0)[79]\d{8}$/.test(s), "Enter an Ethiopian phone number, like 0911 234 567")
   .transform((s) => "+251" + s.replace(/^(\+251|251|0)/, ""));
 
+/**
+ * Phone numbers shared with the bot arrive as "251911234567", "+251 91…" etc.
+ * Returns "+<digits>", using the canonical +2519… form for Ethiopian numbers.
+ */
+export function normalizeContactPhone(raw: string) {
+  const digits = raw.replace(/\D/g, "");
+  const ethiopian = ethiopianPhone.safeParse(digits.startsWith("251") ? "+" + digits : digits);
+  return ethiopian.success ? ethiopian.data : "+" + digits;
+}
+
+/** Telegram lets people share anyone's contact card. Only accept their own. */
+export function isOwnContact(contactUserId: number | undefined, fromId: number) {
+  return contactUserId === fromId;
+}
+
 /** yearOfStudy value for members who have already graduated (years are 1–7). */
 export const GRADUATED = 0;
 
@@ -38,6 +53,9 @@ export const registrationSchema = z.object({
   contentLanguage: z.enum(["om", "am"], { message: "Choose a language" }),
   note: optionalText(500),
 });
+
+/** What the form submits: the phone comes from the bot, not the form. */
+export const registrationFormSchema = registrationSchema.omit({ phone: true });
 
 export type RegistrationInput = z.infer<typeof registrationSchema>;
 

@@ -67,3 +67,68 @@ export async function verifyTelegramLogin(
   }
   return { ok: true };
 }
+
+/* ---------- Telegram Mini App (Web App) ---------- */
+
+export type WebAppUser = {
+  id: number;
+  first_name: string;
+  last_name?: string;
+  username?: string;
+  photo_url?: string;
+};
+
+export type WebAppVerifyResult =
+  | { ok: true; user: WebAppUser }
+  | { ok: false; reason: "bad_signature" | "expired" | "no_user" };
+
+async function hmac(key: BufferSource, data: string) {
+  const k = await crypto.subtle.importKey("raw", key, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  return crypto.subtle.sign("HMAC", k, enc.encode(data));
+}
+
+/** data_check_string for Mini Apps: every field except `hash` (values URL-decoded), sorted, "\n"-joined. */
+export function webAppDataCheckString(params: URLSearchParams) {
+  return [...params.entries()]
+    .filter(([k]) => k !== "hash")
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+    .map(([k, v]) => `${k}=${v}`)
+    .join("\n");
+}
+
+/** secret = HMAC_SHA256(key "WebAppData", bot_token); hash = hex HMAC_SHA256(secret, data_check_string) */
+export async function webAppSignature(params: URLSearchParams, botToken: string) {
+  const secret = await hmac(enc.encode("WebAppData"), botToken);
+  return toHex(await hmac(secret, webAppDataCheckString(params)));
+}
+
+/**
+ * Verifies Telegram.WebApp.initData, sent by the page Telegram opens from the
+ * bot's "Continue registration" button.
+ * https://core.telegram.org/bots/webapps#validating-data-received-via-the-mini-app
+ */
+export async function verifyWebAppInitData(
+  initData: string,
+  botToken: string,
+  nowMs: number,
+  maxAgeSeconds = 60 * 60 * 24,
+): Promise<WebAppVerifyResult> {
+  const params = new URLSearchParams(initData);
+  const hash = params.get("hash") ?? "";
+  const expected = await webAppSignature(params, botToken);
+  if (!constantTimeEqual(expected, hash.toLowerCase())) return { ok: false, reason: "bad_signature" };
+  if (nowMs / 1000 - Number(params.get("auth_date")) > maxAgeSeconds) return { ok: false, reason: "expired" };
+  try {
+    const user = JSON.parse(params.get("user") ?? "") as WebAppUser;
+    if (typeof user?.id !== "number" || !user.first_name) return { ok: false, reason: "no_user" };
+    return { ok: true, user };
+  } catch {
+    return { ok: false, reason: "no_user" };
+  }
+}
+
+/** Constant-time check of the X-Telegram-Bot-Api-Secret-Token header. */
+export function secretMatches(received: string | null, expected: string | undefined) {
+  if (!received || !expected) return false;
+  return constantTimeEqual(received, expected);
+}

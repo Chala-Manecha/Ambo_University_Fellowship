@@ -2,7 +2,7 @@ import type { BetterAuthPlugin, User } from "better-auth";
 import { APIError, createAuthEndpoint } from "better-auth/api";
 import { setSessionCookie } from "better-auth/cookies";
 import { z } from "zod";
-import { verifyTelegramLogin, type TelegramLoginData } from "./telegram-verify";
+import { verifyTelegramLogin, verifyWebAppInitData, type TelegramLoginData } from "./telegram-verify";
 
 // looseObject: every field Telegram sends is part of the signature, so unknown
 // fields must be kept, not stripped.
@@ -15,6 +15,8 @@ const telegramBody = z.looseObject({
   auth_date: z.coerce.number().int(),
   hash: z.string().regex(/^[a-f0-9]{64}$/i),
 });
+
+const webAppBody = z.object({ initData: z.string().min(1).max(4096) });
 
 const devBody = z.object({
   telegramId: z.coerce.number().int().positive(),
@@ -82,6 +84,27 @@ export function telegram(opts: { botToken: string }) {
             name,
             username: data.username,
             photoUrl: data.photo_url,
+          });
+        },
+      ),
+
+      // Mini App: the page opened from the bot's "Continue registration" button.
+      signInTelegramWebApp: createAuthEndpoint(
+        "/sign-in/telegram-webapp",
+        { method: "POST", body: webAppBody },
+        async (ctx) => {
+          const result = await verifyWebAppInitData(ctx.body.initData, opts.botToken, Date.now());
+          if (!result.ok) {
+            throw new APIError("UNAUTHORIZED", {
+              message: result.reason === "expired" ? "This link expired. Open the bot again." : "Telegram sign-in could not be verified.",
+            });
+          }
+          const u = result.user;
+          return signInTelegramUser(ctx, {
+            id: u.id,
+            name: [u.first_name, u.last_name].filter(Boolean).join(" "),
+            username: u.username,
+            photoUrl: u.photo_url,
           });
         },
       ),

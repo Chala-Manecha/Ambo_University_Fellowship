@@ -20,10 +20,25 @@ Interface in English; homepage and description text in Afaan Oromoo and Amharic 
 5. Telegram bot: create with @BotFather, then `/setdomain` → your workers.dev or custom domain.
    Set `TELEGRAM_BOT_USERNAME` in `wrangler.jsonc`.
 6. Turnstile: create a widget in the dashboard; set `TURNSTILE_SITE_KEY` in `wrangler.jsonc`.
-7. Secrets: `npx wrangler secret put BETTER_AUTH_SECRET` (and `TELEGRAM_BOT_TOKEN`, `TURNSTILE_SECRET_KEY`).
+7. Secrets: `npx wrangler secret put BETTER_AUTH_SECRET` (and `TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`, `TURNSTILE_SECRET_KEY`).
    Generate the auth secret with `openssl rand -base64 32`.
 8. Deploy: connect the GitHub repo in Workers → Settings → Builds (build command `npm run build`,
    deploy command `npx wrangler deploy`). Run `npm run db:migrate:remote` after schema changes.
+
+## Telegram bot (registration starts here)
+Every "Register" link opens `t.me/<bot>?start=register`. The bot asks the member to share their
+phone number (Telegram guarantees it's their own), saves it in `telegram_contacts`, then shows a
+**Continue registration** button. That opens `/tg` as a Telegram Mini App, which signs them in from
+Telegram's signed `initData` and sends them to `/register`, where the phone is filled in.
+Admins get a Telegram message for each new registration; members get one when they're approved or rejected.
+
+Setup (once):
+1. `npx wrangler secret put TELEGRAM_WEBHOOK_SECRET`, using a value from `openssl rand -hex 32`.
+2. Deploy and run `npm run db:migrate:remote`.
+3. Signed in as admin, open `/admin/telegram` and press **Connect webhook**.
+
+Code: `app/lib/bot.server.ts` (updates and notifications), `app/content/bot.ts` (texts),
+`app/routes/telegram.webhook.ts`, `app/routes/tg.tsx`.
 
 ## Making the first admin
 Sign in once with Telegram, then:

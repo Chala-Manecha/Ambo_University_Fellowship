@@ -104,3 +104,19 @@ export const members = sqliteTable(
 );
 
 export type Member = typeof members.$inferSelect;
+
+/**
+ * Phone numbers members shared with the bot ("Share my phone number").
+ * Telegram guarantees the number belongs to that Telegram account, so the
+ * registration form uses it instead of asking. Keyed by Telegram id because
+ * people share their number before they have ever opened the website.
+ */
+export const telegramContacts = sqliteTable("telegram_contacts", {
+  telegramId: text("telegram_id").primaryKey(),
+  phone: text("phone").notNull(),
+  firstName: text("first_name"),
+  username: text("username"),
+  ...timestamps,
+});
+
+export type TelegramContact = typeof telegramContacts.$inferSelect;

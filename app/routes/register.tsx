@@ -4,15 +4,27 @@ import { Form, Link, redirect, useNavigation, useRouteLoaderData } from "react-r
 import type { Route } from "./+types/register";
 import type { loader as rootLoader } from "../root";
 import { Turnstile } from "../components/Turnstile";
+import { botLink } from "../content/bot";
 import { HOME } from "../content/site";
-import { getDb, schema } from "../db";
+import { getDb, schema, type Db } from "../db";
+import { notifyAdmins } from "../lib/bot.server";
 import { DEFAULT_LANG } from "../lib/lang";
-import { formatYear, GRADUATED, registrationSchema } from "../lib/registration";
+import { formatYear, GRADUATED, registrationFormSchema } from "../lib/registration";
 import { requireUser } from "../lib/session.server";
 import { verifyTurnstile } from "../lib/turnstile.server";
 
 export function meta() {
   return [{ title: "Register · Gibi Gubae" }];
+}
+
+/** The phone number this Telegram account shared with the bot, if any. */
+async function verifiedPhone(db: Db, telegramId: string | null) {
+  if (!telegramId) return null;
+  const contact = await db.query.telegramContacts.findFirst({
+    where: eq(schema.telegramContacts.telegramId, telegramId),
+    columns: { phone: true },
+  });
+  return contact?.phone ?? null;
 }
 
 export async function loader({ request, context }: Route.LoaderArgs) {
@@ -24,15 +36,26 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     columns: { status: true },
   });
   if (existing) throw redirect("/account");
-  return { userName: user.name, turnstileSiteKey: env.TURNSTILE_SITE_KEY };
+  return {
+    userName: user.name,
+    phone: await verifiedPhone(db, user.telegramId),
+    botUrl: botLink(env.TELEGRAM_BOT_USERNAME),
+    turnstileSiteKey: env.TURNSTILE_SITE_KEY,
+  };
 }
 
 type FieldErrors = Partial<Record<string, string>>;
 
 export async function action({ request, context }: Route.ActionArgs) {
-  const { env } = context.cloudflare;
+  const { env, ctx } = context.cloudflare;
   const user = await requireUser(request, env);
   const form = await request.formData();
+  const db = getDb(env.DB);
+
+  const phone = await verifiedPhone(db, user.telegramId);
+  if (!phone) {
+    return { formError: "Share your phone number with the fellowship bot first.", fieldErrors: {} as FieldErrors };
+  }
 
   const human = await verifyTurnstile(
     form.get("cf-turnstile-response"),
@@ -43,7 +66,7 @@ export async function action({ request, context }: Route.ActionArgs) {
     return { formError: "The security check didn't pass. Complete it and submit again.", fieldErrors: {} as FieldErrors };
   }
 
-  const parsed = registrationSchema.safeParse(Object.fromEntries(form));
+  const parsed = registrationFormSchema.safeParse(Object.fromEntries(form));
   if (!parsed.success) {
     const fieldErrors: FieldErrors = {};
     for (const issue of parsed.error.issues) {
@@ -53,12 +76,22 @@ export async function action({ request, context }: Route.ActionArgs) {
     return { formError: "Fix the highlighted fields.", fieldErrors };
   }
 
-  const db = getDb(env.DB);
   // userId is UNIQUE: a second submission from the same login is ignored
-  await db
+  const inserted = await db
     .insert(schema.members)
-    .values({ ...parsed.data, userId: user.id })
-    .onConflictDoNothing({ target: schema.members.userId });
+    .values({ ...parsed.data, phone, userId: user.id })
+    .onConflictDoNothing({ target: schema.members.userId })
+    .returning({ id: schema.members.id });
+
+  if (inserted.length > 0) {
+    const d = parsed.data;
+    ctx.waitUntil(
+      notifyAdmins(
+        env,
+        `New registration: ${d.fullName} (${d.fieldOfStudy}, ${formatYear(d.yearOfStudy)}).\nReview: ${env.PUBLIC_SITE_URL}/admin/registrations`,
+      ),
+    );
+  }
 
   throw redirect("/account?registered=1");
 }
@@ -74,6 +107,20 @@ export default function Register({ loaderData, actionData }: Route.ComponentProp
   useEffect(() => {
     if (actionData) setWidgetKey((k) => k + 1);
   }, [actionData]);
+
+  // Registration starts in the bot, which collects a verified phone number.
+  if (!loaderData.phone) {
+    return (
+      <section className="page narrow">
+        <h1>Member registration</h1>
+        <p>
+          Registration starts in Telegram. Open the fellowship bot, share your phone number, then tap{" "}
+          <strong>Continue registration</strong>.
+        </p>
+        <a className="btn btn-primary" href={loaderData.botUrl}>Open the bot</a>
+      </section>
+    );
+  }
 
   return (
     <section className="page narrow">
@@ -97,7 +144,10 @@ export default function Register({ loaderData, actionData }: Route.ComponentProp
           {errors.gender && <span className="field-error">{errors.gender}</span>}
         </fieldset>
 
-        <Field label="Phone" name="phone" type="tel" inputMode="tel" placeholder="09XX XXX XXX" error={errors.phone} required autoComplete="tel" />
+        <div className="field">
+          <span>Phone <small>Shared from Telegram</small></span>
+          <p className="readonly">{loaderData.phone}</p>
+        </div>
         <Field label="Student ID" name="studentId" error={errors.studentId} required />
         <Field label="Field of study" name="fieldOfStudy" error={errors.fieldOfStudy} required />
 
