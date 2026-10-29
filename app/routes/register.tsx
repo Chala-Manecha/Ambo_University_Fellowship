@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { eq } from "drizzle-orm";
 import { Form, Link, redirect, useNavigation, useRouteLoaderData } from "react-router";
 import type { Route } from "./+types/register";
@@ -68,6 +69,11 @@ export default function Register({ loaderData, actionData }: Route.ComponentProp
   const nav = useNavigation();
   const errors = actionData?.fieldErrors ?? {};
   const submitting = nav.state === "submitting";
+  // A Turnstile token works once. After every server reply, mount a fresh widget.
+  const [widgetKey, setWidgetKey] = useState(0);
+  useEffect(() => {
+    if (actionData) setWidgetKey((k) => k + 1);
+  }, [actionData]);
 
   return (
     <section className="page narrow">
@@ -119,7 +125,7 @@ export default function Register({ loaderData, actionData }: Route.ComponentProp
           <textarea name="note" rows={3} maxLength={500} />
         </label>
 
-        <Turnstile siteKey={loaderData.turnstileSiteKey} />
+        <Turnstile key={widgetKey} siteKey={loaderData.turnstileSiteKey} />
 
         <button type="submit" className="btn btn-primary" disabled={submitting}>
           {submitting ? "Submitting…" : "Submit registration"}
