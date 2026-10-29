@@ -1,5 +1,5 @@
 import { and, asc, eq } from "drizzle-orm";
-import { Form, useNavigation } from "react-router";
+import { Form, Link, useNavigation } from "react-router";
 import type { Route } from "./+types/admin.registrations";
 import { MEMBER_DECISION } from "../content/bot";
 import { getDb, schema } from "../db";
@@ -81,6 +81,7 @@ export default function ReviewRegistrations({ loaderData, actionData }: Route.Co
   const nav = useNavigation();
   return (
     <section className="page wide">
+      <p className="muted"><Link to="/admin">← Admin</Link></p>
       <h1>Review registrations</h1>
       {actionData?.message && <p className="notice" role="status">{actionData.message}</p>}
       {pending.length === 0 ? (

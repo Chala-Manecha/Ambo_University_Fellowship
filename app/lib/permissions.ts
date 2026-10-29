@@ -9,6 +9,9 @@ export type Role = (typeof ROLES)[number];
 export const PERMISSIONS = {
   "registration:review": ["admin"],
   "bot:manage": ["admin"],
+  "member:manage": ["admin"], // roles and positions
+  "department:manage": ["admin"], // appoint/remove department leaders
+  "attendance:fellowship": ["admin"], // whole-fellowship sessions
   "member:list": ["admin", "dept_leader"],
   "attendance:record": ["admin", "dept_leader"],
   "course:manage": ["admin"],

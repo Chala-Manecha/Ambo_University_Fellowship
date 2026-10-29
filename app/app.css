@@ -179,6 +179,7 @@ main { min-height: 60vh; }
 .account-id { display: flex; gap: 1rem; align-items: center; margin: 1rem 0 1.5rem; }
 .account-id img { border-radius: 50%; }
 .account-id div { display: flex; flex-direction: column; }
+.account-id .pill { align-self: flex-start; margin-top: 0.25rem; }
 .status { border-left: 3px solid var(--gold); padding-left: 0.75rem; }
 .status-rejected { border-color: var(--red); }
 
@@ -193,3 +194,33 @@ th { color: var(--stone); font-weight: 600; }
 /* ---------- Footer ---------- */
 .site-footer { margin-top: 4rem; }
 .site-footer p { padding: 1rem clamp(1rem, 4vw, 3rem); color: var(--stone); font-size: var(--step--1); margin: 0; }
+
+/* ---------- Departments & attendance ---------- */
+h2 { margin-top: 2rem; }
+.dept-grid { list-style: none; padding: 0; margin: 1.5rem 0; display: grid; gap: 0.9rem; grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr)); }
+.dept-card { border: 1px solid var(--line); border-radius: 8px; padding: 1rem 1.1rem; background: var(--surface); display: flex; flex-direction: column; justify-content: space-between; gap: 0.75rem; }
+.dept-card h2 { margin: 0; font-size: var(--step-1); }
+.dept-card h2 a { text-decoration: none; }
+.dept-card p { margin: 0; }
+.dept-card-actions { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
+.pill { display: inline-block; font-size: 0.75rem; font-weight: 600; padding: 0.15rem 0.55rem; border-radius: 999px; border: 1px solid var(--line); color: var(--stone); vertical-align: middle; }
+.pill-active, .pill-present { border-color: var(--lapis); color: var(--lapis); }
+.pill-pending, .pill-excused { border-color: var(--gold); }
+.pill-absent { border-color: var(--red); color: var(--red); }
+.inline-form { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: end; margin: 1rem 0; }
+.inline-form .field { flex: 1 1 12rem; }
+.session-list { list-style: none; padding: 0; margin: 0.75rem 0; }
+.session-list li { padding: 0.5rem 0; border-bottom: 1px solid var(--line); }
+.roster { list-style: none; padding: 0; margin: 1rem 0 1.5rem; }
+.roster li { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 0.5rem; padding: 0.6rem 0; border-bottom: 1px solid var(--line); }
+.roster-name { font-weight: 600; }
+.segmented { display: inline-flex; border: 1px solid var(--line); border-radius: 999px; overflow: hidden; }
+.seg { position: relative; }
+.seg input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
+.seg span { display: block; padding: 0.4rem 0.8rem; font-size: var(--step--1); color: var(--stone); }
+.seg + .seg span { border-left: 1px solid var(--line); }
+.seg input:focus-visible + span { outline: 2px solid var(--gold); outline-offset: -2px; }
+.seg-present input:checked + span { background: var(--lapis); color: var(--paper); }
+.seg-absent input:checked + span { background: var(--red); color: var(--paper); }
+.seg-excused input:checked + span { background: var(--gold); color: var(--lapis-ink); }
+.danger-zone { margin-top: 2.5rem; }

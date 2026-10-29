@@ -14,6 +14,8 @@ import { LangSwitch } from "./components/LangSwitch";
 import { botLink } from "./content/bot";
 import { HOME, SITE } from "./content/site";
 import { DEFAULT_LANG, langFromCookie } from "./lib/lang";
+import { eq } from "drizzle-orm";
+import { getDb, schema } from "./db";
 import { getUser } from "./lib/session.server";
 import { can } from "./lib/permissions";
 import "./app.css";
@@ -30,11 +32,17 @@ export const links: Route.LinksFunction = () => [
 export async function loader({ request, context }: Route.LoaderArgs) {
   const { env } = context.cloudflare;
   const user = await getUser(request, env);
+  const isMember = user
+    ? Boolean(
+        await getDb(env.DB).query.members.findFirst({ where: eq(schema.members.userId, user.id), columns: { id: true } }),
+      )
+    : false;
   return {
     lang: langFromCookie(request.headers.get("Cookie")),
     botUrl: botLink(env.TELEGRAM_BOT_USERNAME),
     user,
-    canReview: user ? can(user.role, "registration:review") : false,
+    isMember,
+    isAdmin: user ? can(user.role, "member:manage") : false,
   };
 }
 
@@ -60,8 +68,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
           </Link>
           <nav aria-label="Main">
             <NavLink to="/" end>Home</NavLink>
-            {data?.botUrl && <a href={data.botUrl}>Register</a>}
-            {data?.canReview && <NavLink to="/admin/registrations">Review</NavLink>}
+            {data?.botUrl && !data.isMember && <a href={data.botUrl}>Register</a>}
+            {data?.user && <NavLink to="/departments">Departments</NavLink>}
+            {data?.isAdmin && <NavLink to="/admin">Admin</NavLink>}
             {data?.user ? <NavLink to="/account">My account</NavLink> : <NavLink to="/login">Sign in</NavLink>}
           </nav>
           {data && <LangSwitch current={data.lang} />}

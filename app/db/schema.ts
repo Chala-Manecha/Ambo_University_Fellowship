@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { integer, sqliteTable, text, index } from "drizzle-orm/sqlite-core";
+import { integer, sqliteTable, text, index, primaryKey, uniqueIndex } from "drizzle-orm/sqlite-core";
 
 const timestamps = {
   createdAt: integer("created_at", { mode: "timestamp_ms" })
@@ -23,6 +23,8 @@ export const user = sqliteTable("user", {
   role: text("role").notNull().default("member"),
   telegramId: text("telegram_id").unique(),
   telegramUsername: text("telegram_username"),
+  // Executive position (chair, vice chair, secretary); access comes from `role`
+  position: text("position", { enum: ["chair", "vice_chair", "secretary"] }),
   ...timestamps,
 });
 
@@ -120,3 +122,66 @@ export const telegramContacts = sqliteTable("telegram_contacts", {
 });
 
 export type TelegramContact = typeof telegramContacts.$inferSelect;
+
+/* ---------- Departments & attendance ---------- */
+
+export const departments = sqliteTable("departments", {
+  id: text("id").primaryKey(), // short slug, e.g. "faaruu"
+  nameOm: text("name_om").notNull(),
+  nameAm: text("name_am").notNull(),
+  sortOrder: integer("sort_order").notNull().default(0),
+  ...timestamps,
+});
+
+export const departmentMembers = sqliteTable(
+  "department_members",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    departmentId: text("department_id")
+      .notNull()
+      .references(() => departments.id, { onDelete: "cascade" }),
+    memberId: text("member_id")
+      .notNull()
+      .references(() => members.id, { onDelete: "cascade" }),
+    role: text("role", { enum: ["member", "leader"] }).notNull().default("member"),
+    status: text("status", { enum: ["pending", "active", "rejected"] }).notNull().default("pending"),
+    ...timestamps,
+  },
+  (t) => [uniqueIndex("dept_member_unique").on(t.departmentId, t.memberId), index("dept_member_member_idx").on(t.memberId)],
+);
+
+/** departmentId null = whole-fellowship session (taken by admins) */
+export const attendanceSessions = sqliteTable(
+  "attendance_sessions",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    departmentId: text("department_id").references(() => departments.id, { onDelete: "cascade" }),
+    title: text("title").notNull(),
+    date: text("date").notNull(), // YYYY-MM-DD
+    createdBy: text("created_by").references(() => user.id, { onDelete: "set null" }),
+    ...timestamps,
+  },
+  (t) => [index("attendance_sessions_dept_date_idx").on(t.departmentId, t.date)],
+);
+
+export const attendanceRecords = sqliteTable(
+  "attendance_records",
+  {
+    sessionId: text("session_id")
+      .notNull()
+      .references(() => attendanceSessions.id, { onDelete: "cascade" }),
+    memberId: text("member_id")
+      .notNull()
+      .references(() => members.id, { onDelete: "cascade" }),
+    status: text("status", { enum: ["present", "absent", "excused"] }).notNull(),
+    recordedBy: text("recorded_by").references(() => user.id, { onDelete: "set null" }),
+    ...timestamps,
+  },
+  (t) => [primaryKey({ columns: [t.sessionId, t.memberId] }), index("attendance_records_member_idx").on(t.memberId)],
+);
+
+export type Department = typeof departments.$inferSelect;

@@ -28,6 +28,12 @@ export const MEMBER_DECISION: Record<ContentLang, { approved: string; rejected: 
   },
 };
 
+/** Sent when a department leader approves a join request. */
+export const DEPARTMENT_APPROVED: Record<ContentLang, (department: string) => string> = {
+  om: (d) => `${d} keessatti miseensummaan keessan mirkanaa'eera.`,
+  am: (d) => `በ${d} አባልነትዎ ጸድቋል።`,
+};
+
 /** t.me link that opens the bot and sends /start <payload>. */
 export function botLink(botUsername: string, payload = "register") {
   return `https://t.me/${botUsername}?start=${payload}`;

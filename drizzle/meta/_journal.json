@@ -15,6 +15,13 @@
       "when": 1793293072230,
       "tag": "0001_bot_contacts",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1793303950469,
+      "tag": "0002_departments_attendance",
+      "breakpoints": true
     }
   ]
 }

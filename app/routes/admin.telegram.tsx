@@ -1,4 +1,4 @@
-import { Form, useNavigation } from "react-router";
+import { Form, Link, useNavigation } from "react-router";
 import type { Route } from "./+types/admin.telegram";
 import { botLink } from "../content/bot";
 import { tgCall } from "../lib/bot.server";
@@ -53,6 +53,7 @@ export default function TelegramAdmin({ loaderData, actionData }: Route.Componen
   const connected = info?.url === expectedUrl;
   return (
     <section className="page narrow">
+      <p className="muted"><Link to="/admin">← Admin</Link></p>
       <h1>Telegram bot</h1>
       {actionData && (
         <p className={actionData.ok ? "notice" : "form-error"} role="status">{actionData.message}</p>

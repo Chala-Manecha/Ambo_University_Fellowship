@@ -40,6 +40,17 @@ Setup (once):
 Code: `app/lib/bot.server.ts` (updates and notifications), `app/content/bot.ts` (texts),
 `app/routes/telegram.webhook.ts`, `app/routes/tg.tsx`.
 
+## Departments & attendance
+- 9 departments are created by migration `0002` (names in Afaan Oromoo and Amharic; they follow the language switch).
+- Members ask to join on `/departments`; the department's leaders get a Telegram message and approve on `/departments/<id>`.
+- Admins appoint leaders on the department page (the person must be a member of it first). Leaders get the
+  `dept_leader` role automatically and lose it when they no longer lead any department.
+- Leaders take attendance for their department; admins take whole-fellowship attendance on `/attendance`.
+  Rate = present / (present + absent); excused doesn't count against anyone.
+- Positions (Walitti qabaa / ዋና ሰብሳቢ, Itti aanaa / ምክትል ሰብሳቢ, Barreessaa / ጸሐፊ) are set on `/admin/members`.
+  Each position belongs to one person and comes with admin access.
+- Access rules live in `app/lib/departments.ts` and are covered by `tests/departments.test.ts`.
+
 ## Making the first admin
 Sign in once with Telegram, then:
 ```
