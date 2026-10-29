@@ -1,0 +1,26 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "ambo-university-fellowship",
+  "main": "./workers/app.ts",
+  "compatibility_date": "2026-09-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": { "enabled": true },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "gibi-gubae-db",
+      "database_id": "5841c5b9-f768-4297-94e3-01d72acdee5d",
+      "migrations_dir": "drizzle"
+    }
+  ],
+  "r2_buckets": [{ "binding": "MEDIA", "bucket_name": "ambo-fellowship-media" }],
+  // 05:00 UTC = 08:00 Addis Ababa. Daily Telegram notifications land here (later round).
+  "triggers": { "crons": ["0 5 * * *"] },
+  "vars": {
+    "PUBLIC_SITE_URL": "https://ambo-university-fellowship.YOUR-SUBDOMAIN.workers.dev",
+    "TELEGRAM_BOT_USERNAME": "YourFellowshipBot",
+    // Cloudflare's always-pass test key. Replace with the real site key.
+    "TURNSTILE_SITE_KEY": "1x00000000000000000000AA"
+  }
+  // Secrets (wrangler secret put): BETTER_AUTH_SECRET, TELEGRAM_BOT_TOKEN, TURNSTILE_SECRET_KEY
+}

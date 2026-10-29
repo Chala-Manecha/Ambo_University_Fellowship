@@ -1,0 +1,5 @@
+PUBLIC_SITE_URL=http://localhost:5173
+BETTER_AUTH_SECRET=change-me-to-a-long-random-string-32-chars-min
+TELEGRAM_BOT_TOKEN=123456:ABC-your-bot-token
+# Cloudflare's always-pass test secret
+TURNSTILE_SECRET_KEY=1x0000000000000000000000000000000AA
