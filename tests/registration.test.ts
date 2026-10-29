@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { registrationSchema, reviewTransition } from "../app/lib/registration";
+import { formatYear, GRADUATED, registrationSchema, reviewTransition } from "../app/lib/registration";
 import { safeRedirect } from "../app/lib/session.server";
 
 const valid = {
@@ -35,6 +35,15 @@ describe("registrationSchema", () => {
     expect(registrationSchema.safeParse({ ...valid, gender: "x" }).success).toBe(false);
     expect(registrationSchema.safeParse({ ...valid, contentLanguage: "en" }).success).toBe(false);
     expect(registrationSchema.safeParse({ ...valid, yearOfStudy: "9" }).success).toBe(false);
+    expect(registrationSchema.safeParse({ ...valid, yearOfStudy: "-1" }).success).toBe(false);
+    expect(registrationSchema.safeParse({ ...valid, yearOfStudy: "" }).success).toBe(false);
+  });
+
+  it("accepts graduated members", () => {
+    const r = registrationSchema.parse({ ...valid, yearOfStudy: String(GRADUATED) });
+    expect(r.yearOfStudy).toBe(GRADUATED);
+    expect(formatYear(r.yearOfStudy)).toBe("Graduated");
+    expect(formatYear(3)).toBe("Year 3");
   });
 });
 

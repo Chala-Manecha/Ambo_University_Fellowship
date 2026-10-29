@@ -8,14 +8,13 @@ import type { ContentLang } from "../lib/lang";
 export const SITE = {
   universityEn: "Ambo University",
   campusEn: "Hachalu Hundessa Campus",
-  /** Site header: both names always show, whatever language is selected */
-  headerAm: "ሃጫሉ ሁንዴሳ ካምፓስ ግቢ ጉባኤ",
-  headerOm: "Yaa'ii Mooraa Kaampaasii Hacaaluu Hundeessaa",
   /** Church logo for the header. Put the file in public/ and set e.g. "/church-logo.png" */
   churchLogo: null as string | null,
 };
 
 type HomeContent = {
+  /** Site header name; switches with the language button */
+  header: string;
   university: string;
   campus: string;
   church: string;
@@ -25,10 +24,13 @@ type HomeContent = {
   activities: { title: string; body: string }[];
   steps: string[];
   registerIntro: string;
+  /** Shown under "Preferred language" on the registration form */
+  languageQuestion: string;
 };
 
 export const HOME: Record<ContentLang, HomeContent> = {
   am: {
+    header: "ሃጫሉ ሁንዴሳ ካምፓስ ግቢ ጉባኤ",
     university: "አምቦ ዩኒቨርሲቲ",
     campus: "ሃጫሉ ሁንዴሳ ካምፓስ",
     church: "አዋሮ ደብረ ምህረት ቅዱስ ሚካኤል ቤተክርስቲያን",
@@ -43,8 +45,10 @@ export const HOME: Record<ContentLang, HomeContent> = {
     ],
     steps: ["በቴሌግራም ይግቡ", "የምዝገባ ቅጹን ይሙሉ", "የክፍል መሪዎች ምዝገባዎን ያጸድቃሉ"],
     registerIntro: "ቅጹን በትክክል ይሙሉ። መረጃዎ ለጉባኤው አገልጋዮች ብቻ ይታያል።",
+    languageQuestion: "ትምህርቶችንና መልዕክቶችን በየትኛው ቋንቋ መቀበል ይፈልጋሉ?",
   },
   om: {
+    header: "Yaa'ii Mooraa Kaampaasii Hacaaluu Hundeessaa",
     university: "Yuunivarsiitii Amboo",
     campus: "Kaampaasii Hacaaluu Hundeessaa",
     church: "Mana Amantaa Tulluu Araaraa Qulqulluu Mikaa'el",
@@ -59,5 +63,6 @@ export const HOME: Record<ContentLang, HomeContent> = {
     ],
     steps: ["Telegram'n seenaa", "Unka galmee guutaa", "Hoggantoonni kutaa galmee keessan ni mirkaneessu"],
     registerIntro: "Unka kana sirriitti guutaa. Odeeffannoon keessan tajaajiltoota walga'ichaa qofaaf mul'ata.",
+    languageQuestion: "Barnootaa fi ergaawwan afaan kamiin argachuu barbaaddu?",
   },
 };

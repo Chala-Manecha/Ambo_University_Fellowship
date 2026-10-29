@@ -7,7 +7,7 @@ import { Turnstile } from "../components/Turnstile";
 import { HOME } from "../content/site";
 import { getDb, schema } from "../db";
 import { DEFAULT_LANG } from "../lib/lang";
-import { registrationSchema } from "../lib/registration";
+import { formatYear, GRADUATED, registrationSchema } from "../lib/registration";
 import { requireUser } from "../lib/session.server";
 import { verifyTurnstile } from "../lib/turnstile.server";
 
@@ -106,14 +106,16 @@ export default function Register({ loaderData, actionData }: Route.ComponentProp
           <select name="yearOfStudy" required defaultValue="" aria-invalid={Boolean(errors.yearOfStudy)}>
             <option value="" disabled>Choose year</option>
             {[1, 2, 3, 4, 5, 6, 7].map((y) => (
-              <option key={y} value={y}>Year {y}</option>
+              <option key={y} value={y}>{formatYear(y)}</option>
             ))}
+            <option value={GRADUATED}>{formatYear(GRADUATED)}</option>
           </select>
           {errors.yearOfStudy && <span className="field-error">{errors.yearOfStudy}</span>}
         </label>
 
         <fieldset className="field" aria-invalid={Boolean(errors.contentLanguage)}>
           <legend>Preferred language for teaching and messages</legend>
+          <p lang={lang} className="field-hint">{HOME[lang].languageQuestion}</p>
           <div className="choices">
             <label><input type="radio" name="contentLanguage" value="om" defaultChecked={lang === "om"} /> <span lang="om">Afaan Oromoo</span></label>
             <label><input type="radio" name="contentLanguage" value="am" defaultChecked={lang === "am"} /> <span lang="am">አማርኛ</span></label>

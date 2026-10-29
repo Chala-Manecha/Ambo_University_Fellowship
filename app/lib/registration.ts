@@ -8,6 +8,13 @@ export const ethiopianPhone = z
   .refine((s) => /^(\+251|251|0)[79]\d{8}$/.test(s), "Enter an Ethiopian phone number, like 0911 234 567")
   .transform((s) => "+251" + s.replace(/^(\+251|251|0)/, ""));
 
+/** yearOfStudy value for members who have already graduated (years are 1–7). */
+export const GRADUATED = 0;
+
+export function formatYear(year: number) {
+  return year === GRADUATED ? "Graduated" : `Year ${year}`;
+}
+
 const optionalText = (max: number) =>
   z
     .string()
@@ -23,7 +30,11 @@ export const registrationSchema = z.object({
   phone: ethiopianPhone,
   studentId: z.string().trim().min(2, "Enter your student ID").max(30),
   fieldOfStudy: z.string().trim().min(2, "Enter your field of study").max(80),
-  yearOfStudy: z.coerce.number().int().min(1, "Choose your year").max(7, "Choose your year"),
+  // "" must not coerce to 0 (= Graduated), so treat it as missing
+  yearOfStudy: z.preprocess(
+    (v) => (v === "" ? undefined : v),
+    z.coerce.number({ message: "Choose your year" }).int().min(GRADUATED, "Choose your year").max(7, "Choose your year"),
+  ),
   contentLanguage: z.enum(["om", "am"], { message: "Choose a language" }),
   note: optionalText(500),
 });

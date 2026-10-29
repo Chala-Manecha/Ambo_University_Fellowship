@@ -2,7 +2,7 @@ import { and, asc, eq } from "drizzle-orm";
 import { Form, useNavigation } from "react-router";
 import type { Route } from "./+types/admin.registrations";
 import { getDb, schema } from "../db";
-import { reviewTransition } from "../lib/registration";
+import { formatYear, reviewTransition } from "../lib/registration";
 import { requirePermission } from "../lib/session.server";
 
 export function meta() {
@@ -99,7 +99,7 @@ export default function ReviewRegistrations({ loaderData, actionData }: Route.Co
                   <td><a href={`tel:${m.phone}`}>{m.phone}</a></td>
                   <td>{m.telegramUsername ? `@${m.telegramUsername}` : "—"}</td>
                   <td>{m.studentId}</td>
-                  <td>{m.fieldOfStudy}, year {m.yearOfStudy}</td>
+                  <td>{m.fieldOfStudy} · {formatYear(m.yearOfStudy)}</td>
                   <td>{new Date(m.createdAt).toLocaleDateString("en-GB")}</td>
                   <td>
                     <Form method="post" className="row-actions">
