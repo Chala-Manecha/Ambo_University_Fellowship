@@ -11,7 +11,8 @@ import {
 } from "react-router";
 import type { Route } from "./+types/root";
 import { LangSwitch } from "./components/LangSwitch";
-import { langFromCookie } from "./lib/lang";
+import { HOME } from "./content/site";
+import { DEFAULT_LANG, langFromCookie } from "./lib/lang";
 import { getUser } from "./lib/session.server";
 import { can } from "./lib/permissions";
 import "./app.css";
@@ -37,6 +38,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const data = useRouteLoaderData<typeof loader>("root");
+  const lang = data?.lang ?? DEFAULT_LANG;
   return (
     <html lang="en">
       <head>
@@ -49,7 +51,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
       <body>
         <header className="site-header">
           <Link to="/" className="wordmark">
-            <span lang="am">ግቢ ጉባኤ</span>
+            <span lang={lang}>{HOME[lang].name}</span>
             <small>Campus Fellowship</small>
           </Link>
           <nav aria-label="Main">
