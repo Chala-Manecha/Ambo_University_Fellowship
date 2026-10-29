@@ -19,8 +19,7 @@
   "vars": {
     "PUBLIC_SITE_URL": "https://ambo-university-fellowship.henon1918.workers.dev",
     "TELEGRAM_BOT_USERNAME": "HHC_Campus_UniversityBot",
-    // Cloudflare's always-pass test key. Replace with the real site key.
-    "TURNSTILE_SITE_KEY": "1x00000000000000000000AA"
+    "TURNSTILE_SITE_KEY": "0x4AAAAAAFrF8RfN0VXOXNu0"
   }
   // Secrets (wrangler secret put): BETTER_AUTH_SECRET, TELEGRAM_BOT_TOKEN, TURNSTILE_SECRET_KEY
 }
