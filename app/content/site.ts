@@ -26,7 +26,7 @@ export const HOME: Record<ContentLang, HomeContent> = {
   am: {
     university: "አምቦ ዩኒቨርሲቲ",
     campus: "ሃጫሉ ሁንዴሳ ካምፓስ",
-    church: "አዋሮ ደብረ ምህረት ቅዱስ ሚካኤል",
+    church: "አዋሮ ደብረ ምህረት ቅዱስ ሚካኤል ቤተክርስቲያን",
     title: "እንኳን ወደ ግቢ ጉባኤያችን በደኅና መጡ",
     tagline: "በዩኒቨርሲቲ ቆይታችሁ በእምነት፣ በትምህርትና በአገልግሎት አብረን እንደግ።",
     about:
@@ -41,8 +41,8 @@ export const HOME: Record<ContentLang, HomeContent> = {
   },
   om: {
     university: "Yuunivarsiitii Amboo",
-    campus: "Kaampasii Haacaaluu Hundeessaa",
-    church: "Awaaroo Dabra Mihiret Qulqulluu Mikaa'eel",
+    campus: "Kaampaasii Hacaaluu Hundeessaa",
+    church: "Mana Amantaa Tulluu Araaraa Qulqulluu Mikaa'el",
     title: "Gara Gibi Gubae keenyaatti baga nagaan dhuftan",
     tagline: "Yeroo yuunivarsiitii keessa turtan amantii, barnootaa fi tajaajilaan waliin haa guddannu.",
     about:
