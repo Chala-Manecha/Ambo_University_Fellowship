@@ -17,8 +17,8 @@
   // 05:00 UTC = 08:00 Addis Ababa. Daily Telegram notifications land here (later round).
   "triggers": { "crons": ["0 5 * * *"] },
   "vars": {
-    "PUBLIC_SITE_URL": "https://ambo-university-fellowship.YOUR-SUBDOMAIN.workers.dev",
-    "TELEGRAM_BOT_USERNAME": "YourFellowshipBot",
+    "PUBLIC_SITE_URL": "https://ambo-university-fellowship.henon1918.workers.dev",
+    "TELEGRAM_BOT_USERNAME": "HHC_Campus_UniversityBot",
     // Cloudflare's always-pass test key. Replace with the real site key.
     "TURNSTILE_SITE_KEY": "1x00000000000000000000AA"
   }

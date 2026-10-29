@@ -6,7 +6,7 @@ import { DEFAULT_LANG } from "../lib/lang";
 
 export function meta(_: Route.MetaArgs) {
   return [
-    { title: `Gibi Gubae · ${SITE.universityEn}` },
+    { title: `Gibi Gubae · ${SITE.universityEn}, ${SITE.campusEn}` },
     { name: "description", content: "Campus fellowship: courses, prayer and service." },
   ];
 }
@@ -20,7 +20,7 @@ export default function Home() {
   return (
     <div lang={lang} className={`home lang-${lang}`}>
       <section className="hero">
-        <p className="hero-uni" lang="en">{SITE.universityEn}</p>
+        <p className="hero-uni">{t.university} · {t.campus}</p>
         <h1>{t.title}</h1>
         <p className="hero-tagline">{t.tagline}</p>
         <div className="hero-actions" lang="en">
@@ -33,6 +33,10 @@ export default function Home() {
 
       <section className="page about">
         <p className="lead">{t.about}</p>
+        <p className="parish">
+          <span lang="en">Our church</span>
+          {t.church}
+        </p>
       </section>
 
       <section className="page activities" aria-labelledby="activities-h">
