@@ -1,6 +1,10 @@
 import { desc, eq, isNull } from "drizzle-orm";
-import { Form, Link, redirect, useNavigation } from "react-router";
+import { Form, Link, redirect, useNavigation, useRouteLoaderData } from "react-router";
+import type { loader as rootLoader } from "../root";
+import { DEFAULT_LANG } from "../lib/lang";
 import type { Route } from "./+types/attendance";
+import { EcDatePicker } from "../components/EcDatePicker";
+import { formatEc, isoToEc } from "../lib/ethiopian-date";
 import { getDb, schema } from "../db";
 import { sessionSchema, todayInAddis } from "../lib/departments";
 import { requirePermission } from "../lib/session.server";
@@ -45,6 +49,8 @@ export async function action({ request, context }: Route.ActionArgs) {
 
 export default function FellowshipAttendance({ loaderData, actionData }: Route.ComponentProps) {
   const nav = useNavigation();
+  const root = useRouteLoaderData<typeof rootLoader>("root");
+  const lang = root?.lang ?? DEFAULT_LANG;
   return (
     <section className="page">
       <p className="muted"><Link to="/admin">← Admin</Link></p>
@@ -55,10 +61,7 @@ export default function FellowshipAttendance({ loaderData, actionData }: Route.C
           <span>Title</span>
           <input name="title" required maxLength={80} placeholder="Sunday program" />
         </label>
-        <label className="field">
-          <span>Date</span>
-          <input name="date" type="date" required defaultValue={loaderData.today} />
-        </label>
+        <EcDatePicker name="date" label="Date" lang={lang} defaultIso={loaderData.today} minYear={isoToEc(loaderData.today).year - 1} maxYear={isoToEc(loaderData.today).year + 1} />
         <button className="btn btn-primary" disabled={nav.state !== "idle"}>Take attendance</button>
       </Form>
       {actionData?.error && <p className="form-error" role="alert">{actionData.error}</p>}
@@ -66,7 +69,7 @@ export default function FellowshipAttendance({ loaderData, actionData }: Route.C
         <ul className="session-list">
           {loaderData.sessions.map((s) => (
             <li key={s.id}>
-              <Link to={`/attendance/${s.id}`}>{s.date} · {s.title}</Link>
+              <Link to={`/attendance/${s.id}`}><span lang={lang}>{formatEc(s.date, lang)}</span> · {s.title}</Link>
               <span className="muted"> — {s.recorded} recorded</span>
             </li>
           ))}

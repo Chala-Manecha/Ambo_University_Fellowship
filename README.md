@@ -51,6 +51,18 @@ Code: `app/lib/bot.server.ts` (updates and notifications), `app/content/bot.ts` 
   Each position belongs to one person and comes with admin access.
 - Access rules live in `app/lib/departments.ts` and are covered by `tests/departments.test.ts`.
 
+## Member details, QR codes & fasts
+- Registration also asks for birth date, title (men only), service areas, learning interests and departments.
+  Existing members fill these in on **My account → Update my details**. Option labels are in
+  `app/content/member-options.ts` (Afaan Oromoo labels are drafts).
+- All dates are picked and shown in the Ethiopian calendar (`app/lib/ethiopian-date.ts`, scroll-wheel
+  picker in `app/components/EcDatePicker.tsx`); the database stores Gregorian `YYYY-MM-DD`.
+- Approved members get a QR code on My account. It's signed with `BETTER_AUTH_SECRET`, so changing that
+  secret changes everyone's QR code.
+- Fasts (`/fasts`): admins create a fast (dates + meals), members register, and admins or **Cafe
+  coordinators** (role set on `/admin/members`) scan at the cafe on `/fasts/<id>/scan`. Each member can be
+  served once per meal per day.
+
 ## Making the first admin
 Sign in once with Telegram, then:
 ```

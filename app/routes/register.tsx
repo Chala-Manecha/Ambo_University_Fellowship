@@ -1,15 +1,18 @@
 import { useEffect, useState } from "react";
-import { eq } from "drizzle-orm";
+import { asc, eq, inArray } from "drizzle-orm";
 import { Form, Link, redirect, useNavigation, useRouteLoaderData } from "react-router";
 import type { Route } from "./+types/register";
 import type { loader as rootLoader } from "../root";
+import { MemberDetailsFields } from "../components/MemberDetailsFields";
 import { Turnstile } from "../components/Turnstile";
+import { FORM_TEXT } from "../content/member-options";
 import { botLink } from "../content/bot";
 import { HOME } from "../content/site";
 import { getDb, schema, type Db } from "../db";
 import { notifyAdmins } from "../lib/bot.server";
 import { DEFAULT_LANG } from "../lib/lang";
-import { formatYear, GRADUATED, registrationFormSchema } from "../lib/registration";
+import { departmentName, todayInAddis } from "../lib/departments";
+import { formatYear, formToObject, GRADUATED, registrationFormSchema } from "../lib/registration";
 import { requireUser } from "../lib/session.server";
 import { verifyTurnstile } from "../lib/turnstile.server";
 
@@ -41,6 +44,8 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     phone: await verifiedPhone(db, user.telegramId),
     botUrl: botLink(env.TELEGRAM_BOT_USERNAME),
     turnstileSiteKey: env.TURNSTILE_SITE_KEY,
+    today: todayInAddis(),
+    departments: await db.query.departments.findMany({ orderBy: asc(schema.departments.sortOrder) }),
   };
 }
 
@@ -66,7 +71,7 @@ export async function action({ request, context }: Route.ActionArgs) {
     return { formError: "The security check didn't pass. Complete it and submit again.", fieldErrors: {} as FieldErrors };
   }
 
-  const parsed = registrationFormSchema.safeParse(Object.fromEntries(form));
+  const parsed = registrationFormSchema.safeParse(formToObject(form));
   if (!parsed.success) {
     const fieldErrors: FieldErrors = {};
     for (const issue of parsed.error.issues) {
@@ -77,11 +82,26 @@ export async function action({ request, context }: Route.ActionArgs) {
   }
 
   // userId is UNIQUE: a second submission from the same login is ignored
+  const { departments: chosen, ...memberData } = parsed.data;
   const inserted = await db
     .insert(schema.members)
-    .values({ ...parsed.data, phone, userId: user.id })
+    .values({ ...memberData, phone, userId: user.id })
     .onConflictDoNothing({ target: schema.members.userId })
     .returning({ id: schema.members.id });
+
+  // Departments chosen on the form become join requests; leaders see them once the registration is approved
+  if (inserted.length > 0 && chosen.length > 0) {
+    const valid = await db
+      .select({ id: schema.departments.id })
+      .from(schema.departments)
+      .where(inArray(schema.departments.id, chosen));
+    if (valid.length > 0) {
+      await db
+        .insert(schema.departmentMembers)
+        .values(valid.map((d) => ({ departmentId: d.id, memberId: inserted[0].id })))
+        .onConflictDoNothing();
+    }
+  }
 
   if (inserted.length > 0) {
     const d = parsed.data;
@@ -102,6 +122,7 @@ export default function Register({ loaderData, actionData }: Route.ComponentProp
   const nav = useNavigation();
   const errors = actionData?.fieldErrors ?? {};
   const submitting = nav.state === "submitting";
+  const [isMale, setIsMale] = useState(false);
   // A Turnstile token works once. After every server reply, mount a fresh widget.
   const [widgetKey, setWidgetKey] = useState(0);
   useEffect(() => {
@@ -138,8 +159,8 @@ export default function Register({ loaderData, actionData }: Route.ComponentProp
         <fieldset className="field" aria-invalid={Boolean(errors.gender)}>
           <legend>Gender</legend>
           <div className="choices">
-            <label><input type="radio" name="gender" value="male" required /> Male</label>
-            <label><input type="radio" name="gender" value="female" /> Female</label>
+            <label><input type="radio" name="gender" value="male" required onChange={() => setIsMale(true)} /> Male</label>
+            <label><input type="radio" name="gender" value="female" onChange={() => setIsMale(false)} /> Female</label>
           </div>
           {errors.gender && <span className="field-error">{errors.gender}</span>}
         </fieldset>
@@ -169,6 +190,20 @@ export default function Register({ loaderData, actionData }: Route.ComponentProp
           <div className="choices">
             <label><input type="radio" name="contentLanguage" value="om" defaultChecked={lang === "om"} /> <span lang="om">Afaan Oromoo</span></label>
             <label><input type="radio" name="contentLanguage" value="am" defaultChecked={lang === "am"} /> <span lang="am">አማርኛ</span></label>
+          </div>
+        </fieldset>
+
+        <MemberDetailsFields lang={lang} showTitle={isMale} today={loaderData.today} errors={errors} />
+
+        <fieldset className="field">
+          <legend>Departments to serve in <small>Choose any</small></legend>
+          <p lang={lang} className="field-hint">{FORM_TEXT[lang].departments}</p>
+          <div className="checks" lang={lang}>
+            {loaderData.departments.map((d) => (
+              <label key={d.id}>
+                <input type="checkbox" name="departments" value={d.id} /> {departmentName(d, lang)}
+              </label>
+            ))}
           </div>
         </fieldset>
 

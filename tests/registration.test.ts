@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatYear, GRADUATED, registrationSchema, reviewTransition } from "../app/lib/registration";
+import { formatYear, formToObject, GRADUATED, registrationSchema, reviewTransition } from "../app/lib/registration";
 import { safeRedirect } from "../app/lib/session.server";
 
 const valid = {
@@ -12,6 +12,7 @@ const valid = {
   yearOfStudy: "2",
   contentLanguage: "om",
   note: "",
+  birthDate: "2004-03-15",
 };
 
 describe("registrationSchema", () => {
@@ -65,5 +66,41 @@ describe("safeRedirect", () => {
     expect(safeRedirect("/\\evil.com")).toBe("/");
     expect(safeRedirect("https://evil.com")).toBe("/");
     expect(safeRedirect(null, "/account")).toBe("/account");
+  });
+});
+
+describe("round 3 member details", () => {
+  const base = {
+    fullName: "Abebe Kebede", gender: "male", phone: "0911234567", studentId: "UGR/1/16", fieldOfStudy: "Law",
+    yearOfStudy: "2", contentLanguage: "am", birthDate: "2004-03-15",
+  };
+
+  it("keeps a title for men and drops it for women", () => {
+    expect(registrationSchema.parse({ ...base, title: "diakon" }).title).toBe("diakon");
+    expect(registrationSchema.parse({ ...base, gender: "female", title: "diakon" }).title).toBeNull();
+    expect(registrationSchema.parse({ ...base, title: "" }).title).toBeNull();
+    expect(registrationSchema.safeParse({ ...base, title: "pope" }).success).toBe(false);
+  });
+
+  it("accepts known services and learning options only", () => {
+    const r = registrationSchema.parse({ ...base, services: ["cafe", "trips"], learning: ["hymns"], otherService: " Photography " });
+    expect(r.services).toEqual(["cafe", "trips"]);
+    expect(r.learning).toEqual(["hymns"]);
+    expect(r.otherService).toBe("Photography");
+    expect(registrationSchema.safeParse({ ...base, services: ["hacking"] }).success).toBe(false);
+  });
+
+  it("requires a plausible birth date", () => {
+    expect(registrationSchema.safeParse({ ...base, birthDate: "" }).success).toBe(false);
+    expect(registrationSchema.safeParse({ ...base, birthDate: "2024-01-01" }).success).toBe(false);
+    expect(registrationSchema.safeParse({ ...base, birthDate: "1900-01-01" }).success).toBe(false);
+  });
+
+  it("keeps checkbox groups as arrays when reading the form", () => {
+    const f = new FormData();
+    f.append("services", "cafe");
+    f.append("services", "trips");
+    f.append("fullName", "X");
+    expect(formToObject(f)).toMatchObject({ services: ["cafe", "trips"], learning: [], departments: [], fullName: "X" });
   });
 });

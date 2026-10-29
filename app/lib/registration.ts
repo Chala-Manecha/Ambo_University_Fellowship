@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { LEARNING_KEYS, SERVICE_KEYS, TITLE_KEYS, type TitleKey } from "../content/member-options";
+import { ageOn } from "./ethiopian-date";
 
 // Accepts 09XXXXXXXX, 07XXXXXXXX (Safaricom) or +251 forms; stores +251 form.
 export const ethiopianPhone = z
@@ -38,7 +40,45 @@ const optionalText = (max: number) =>
     .optional()
     .transform((s) => (s ? s : null));
 
-export const registrationSchema = z.object({
+const ISO = /^\d{4}-\d{2}-\d{2}$/;
+
+/** Today's date in Addis Ababa (UTC+3), YYYY-MM-DD. */
+function todayAddis() {
+  return new Date(Date.now() + 3 * 3600 * 1000).toISOString().slice(0, 10);
+}
+
+export const birthDate = z
+  .string({ message: "Choose your birth date" })
+  .regex(ISO, "Choose your birth date")
+  .refine((s) => {
+    const age = ageOn(s, todayAddis());
+    return age >= 12 && age <= 90;
+  }, "Check your birth date");
+
+const emptyToNull = (v: unknown) => (v === "" || v === undefined ? null : v);
+
+/** Fields added in round 3; also used by "Update my details". */
+export const memberDetailsSchema = z.object({
+  birthDate,
+  title: z.preprocess(emptyToNull, z.enum(TITLE_KEYS as [TitleKey, ...TitleKey[]]).nullable()),
+  services: z.array(z.enum(SERVICE_KEYS as [string, ...string[]], { message: "Unknown service" })).default([]),
+  otherService: optionalText(100),
+  learning: z.array(z.enum(LEARNING_KEYS as [string, ...string[]], { message: "Unknown option" })).default([]),
+});
+
+/** Titles (ዲያቆን, ቀሲስ, …) are for men only. */
+export function applyTitleRule<T extends { title: TitleKey | null }>(gender: "male" | "female", d: T): T {
+  return gender === "male" ? d : { ...d, title: null };
+}
+
+/** FormData -> plain object, keeping checkbox groups as arrays. */
+export function formToObject(form: FormData) {
+  const obj: Record<string, unknown> = Object.fromEntries(form);
+  for (const k of ["services", "learning", "departments"]) obj[k] = form.getAll(k).map(String);
+  return obj;
+}
+
+const registrationObject = z.object({
   fullName: z.string().trim().min(3, "Enter your full name").max(80),
   christianName: optionalText(60),
   gender: z.enum(["male", "female"], { message: "Choose male or female" }),
@@ -52,10 +92,14 @@ export const registrationSchema = z.object({
   ),
   contentLanguage: z.enum(["om", "am"], { message: "Choose a language" }),
   note: optionalText(500),
+  ...memberDetailsSchema.shape,
+  departments: z.array(z.string().max(40)).max(20).default([]), // checked against the DB in the action
 });
 
+export const registrationSchema = registrationObject.transform((d) => applyTitleRule(d.gender, d));
+
 /** What the form submits: the phone comes from the bot, not the form. */
-export const registrationFormSchema = registrationSchema.omit({ phone: true });
+export const registrationFormSchema = registrationObject.omit({ phone: true }).transform((d) => applyTitleRule(d.gender, d));
 
 export type RegistrationInput = z.infer<typeof registrationSchema>;
 

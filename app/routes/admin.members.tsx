@@ -13,7 +13,7 @@ export function meta() {
   return [{ title: "Members · Gibi Gubae" }];
 }
 
-const ROLE_LABELS = { member: "Member", dept_leader: "Department leader", finance: "Finance", admin: "Admin" } as const;
+const ROLE_LABELS = { member: "Member", dept_leader: "Department leader", finance: "Finance", cafe: "Cafe coordinator", admin: "Admin" } as const;
 
 export async function loader({ request, context }: Route.LoaderArgs) {
   const { env } = context.cloudflare;

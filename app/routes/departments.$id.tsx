@@ -3,6 +3,8 @@ import { Form, Link, redirect, useNavigation, useRouteLoaderData } from "react-r
 import type { Route } from "./+types/departments.$id";
 import type { loader as rootLoader } from "../root";
 import { DEPARTMENT_APPROVED } from "../content/bot";
+import { EcDatePicker } from "../components/EcDatePicker";
+import { formatEc, isoToEc } from "../lib/ethiopian-date";
 import { getDb, schema, type Db } from "../db";
 import { sendMessage } from "../lib/bot.server";
 import {
@@ -55,7 +57,13 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
     .from(schema.departmentMembers)
     .innerJoin(schema.members, eq(schema.members.id, schema.departmentMembers.memberId))
     .innerJoin(schema.user, eq(schema.user.id, schema.members.userId))
-    .where(and(eq(schema.departmentMembers.departmentId, dept.id), inArray(schema.departmentMembers.status, ["pending", "active"])))
+    .where(
+      and(
+        eq(schema.departmentMembers.departmentId, dept.id),
+        inArray(schema.departmentMembers.status, ["pending", "active"]),
+        eq(schema.members.status, "active"), // requests from registration wait until the registration is approved
+      ),
+    )
     .orderBy(asc(schema.members.fullName));
 
   const sessions = await db
@@ -221,10 +229,7 @@ export default function Department({ loaderData, actionData }: Route.ComponentPr
           <span>Title</span>
           <input name="title" required maxLength={80} placeholder="Saturday class" />
         </label>
-        <label className="field">
-          <span>Date</span>
-          <input name="date" type="date" required defaultValue={today} />
-        </label>
+        <EcDatePicker name="date" label="Date" lang={lang} defaultIso={today} minYear={isoToEc(today).year - 1} maxYear={isoToEc(today).year + 1} />
         <button className="btn btn-primary" disabled={busy}>Take attendance</button>
       </Form>
       {error && <p className="form-error" role="alert">{error}</p>}
@@ -232,7 +237,7 @@ export default function Department({ loaderData, actionData }: Route.ComponentPr
         <ul className="session-list">
           {sessions.map((s) => (
             <li key={s.id}>
-              <Link to={`/attendance/${s.id}`}>{s.date} · {s.title}</Link>
+              <Link to={`/attendance/${s.id}`}><span lang={lang}>{formatEc(s.date, lang)}</span> · {s.title}</Link>
               <span className="muted"> — {s.present} present</span>
             </li>
           ))}

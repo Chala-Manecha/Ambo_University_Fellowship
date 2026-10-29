@@ -95,6 +95,11 @@ export const members = sqliteTable(
     yearOfStudy: integer("year_of_study").notNull(),
     contentLanguage: text("content_language", { enum: ["om", "am"] }).notNull(),
     note: text("note"),
+    birthDate: text("birth_date"), // Gregorian YYYY-MM-DD, shown in EC
+    title: text("title", { enum: ["diakon", "kesis", "merigeta", "memhir"] }), // men only
+    services: text("services", { mode: "json" }).$type<string[]>(), // keys from content/member-options
+    otherService: text("other_service"),
+    learning: text("learning", { mode: "json" }).$type<string[]>(),
     status: text("status", { enum: ["pending", "active", "rejected", "alumni"] })
       .notNull()
       .default("pending"),
@@ -185,3 +190,51 @@ export const attendanceRecords = sqliteTable(
 );
 
 export type Department = typeof departments.$inferSelect;
+
+/* ---------- Fasts (cafe meals) ---------- */
+
+export const fasts = sqliteTable("fasts", {
+  id: text("id")
+    .primaryKey()
+    .$defaultFn(() => crypto.randomUUID()),
+  name: text("name").notNull(),
+  startDate: text("start_date").notNull(), // Gregorian YYYY-MM-DD, inclusive
+  endDate: text("end_date").notNull(),
+  meals: text("meals", { mode: "json" }).$type<("breakfast" | "lunch" | "dinner")[]>().notNull(),
+  createdBy: text("created_by").references(() => user.id, { onDelete: "set null" }),
+  ...timestamps,
+});
+
+export const fastRegistrations = sqliteTable(
+  "fast_registrations",
+  {
+    fastId: text("fast_id")
+      .notNull()
+      .references(() => fasts.id, { onDelete: "cascade" }),
+    memberId: text("member_id")
+      .notNull()
+      .references(() => members.id, { onDelete: "cascade" }),
+    ...timestamps,
+  },
+  (t) => [primaryKey({ columns: [t.fastId, t.memberId] })],
+);
+
+/** One row per member per day per meal: the primary key blocks double serving. */
+export const fastCheckins = sqliteTable(
+  "fast_checkins",
+  {
+    fastId: text("fast_id")
+      .notNull()
+      .references(() => fasts.id, { onDelete: "cascade" }),
+    memberId: text("member_id")
+      .notNull()
+      .references(() => members.id, { onDelete: "cascade" }),
+    date: text("date").notNull(), // Gregorian YYYY-MM-DD (Addis Ababa)
+    meal: text("meal", { enum: ["breakfast", "lunch", "dinner"] }).notNull(),
+    scannedBy: text("scanned_by").references(() => user.id, { onDelete: "set null" }),
+    ...timestamps,
+  },
+  (t) => [primaryKey({ columns: [t.fastId, t.memberId, t.date, t.meal] }), index("fast_checkins_fast_date_idx").on(t.fastId, t.date)],
+);
+
+export type Fast = typeof fasts.$inferSelect;

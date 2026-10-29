@@ -3,7 +3,7 @@
  * or changes protected data calls requirePermission() (session.server.ts),
  * which uses can() below. Covered by tests/permissions.test.ts.
  */
-export const ROLES = ["member", "dept_leader", "finance", "admin"] as const;
+export const ROLES = ["member", "dept_leader", "finance", "cafe", "admin"] as const;
 export type Role = (typeof ROLES)[number];
 
 export const PERMISSIONS = {
@@ -12,6 +12,8 @@ export const PERMISSIONS = {
   "member:manage": ["admin"], // roles and positions
   "department:manage": ["admin"], // appoint/remove department leaders
   "attendance:fellowship": ["admin"], // whole-fellowship sessions
+  "fast:manage": ["admin"], // create fasts, add people
+  "fast:scan": ["admin", "cafe"], // scan QR codes at the cafe
   "member:list": ["admin", "dept_leader"],
   "attendance:record": ["admin", "dept_leader"],
   "course:manage": ["admin"],

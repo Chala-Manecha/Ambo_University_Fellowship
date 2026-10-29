@@ -12,6 +12,7 @@ import {
   parseAttendanceForm,
 } from "../lib/departments";
 import { getLeaderDepartmentIds } from "../lib/departments.server";
+import { formatEc } from "../lib/ethiopian-date";
 import { DEFAULT_LANG } from "../lib/lang";
 import { requireUser } from "../lib/session.server";
 
@@ -112,7 +113,7 @@ export default function TakeAttendance({ loaderData, actionData }: Route.Compone
       <p className="muted"><Link to={backTo}>← Back</Link></p>
       <h1>{session.title}</h1>
       <p className="muted">
-        {session.date} · {dept ? <span lang={lang}>{departmentName(dept, lang)}</span> : "Whole fellowship"} · {summary.present} present,{" "}
+        <span lang={lang}>{formatEc(session.date, lang)}</span> · {dept ? <span lang={lang}>{departmentName(dept, lang)}</span> : "Whole fellowship"} · {summary.present} present,{" "}
         {summary.absent} absent, {summary.excused} excused
       </p>
       {actionData?.message && <p className="notice" role="status">{actionData.message}</p>}

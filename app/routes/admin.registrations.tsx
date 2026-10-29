@@ -4,6 +4,7 @@ import type { Route } from "./+types/admin.registrations";
 import { MEMBER_DECISION } from "../content/bot";
 import { getDb, schema } from "../db";
 import { sendMessage } from "../lib/bot.server";
+import { getDepartmentLeaderTelegramIds } from "../lib/departments.server";
 import { formatYear, reviewTransition } from "../lib/registration";
 import { requirePermission } from "../lib/session.server";
 
@@ -71,6 +72,28 @@ export async function action({ request, context }: Route.ActionArgs) {
       const text = MEMBER_DECISION[row.contentLanguage][next === "active" ? "approved" : "rejected"];
       ctx.waitUntil(sendMessage(env, u.telegramId, text));
     }
+  }
+
+  // Departments chosen at registration: tell those leaders there's a request to review
+  if (row && next === "active") {
+    const requests = await db
+      .select({ departmentId: schema.departmentMembers.departmentId, nameOm: schema.departments.nameOm, fullName: schema.members.fullName })
+      .from(schema.departmentMembers)
+      .innerJoin(schema.departments, eq(schema.departments.id, schema.departmentMembers.departmentId))
+      .innerJoin(schema.members, eq(schema.members.id, schema.departmentMembers.memberId))
+      .where(and(eq(schema.departmentMembers.memberId, id), eq(schema.departmentMembers.status, "pending")));
+    ctx.waitUntil(
+      Promise.all(
+        requests.map(async (r) => {
+          const leaders = await getDepartmentLeaderTelegramIds(db, r.departmentId);
+          await Promise.all(
+            leaders.map((t) =>
+              sendMessage(env, t, `${r.fullName} asked to join ${r.nameOm}.\nReview: ${env.PUBLIC_SITE_URL}/departments/${r.departmentId}`),
+            ),
+          );
+        }),
+      ),
+    );
   }
 
   return { message: next === "active" ? "Registration approved." : "Registration rejected." };

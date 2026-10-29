@@ -36,10 +36,10 @@ export function canTakeAttendance(role: Role, leaderOf: readonly string[], depar
 
 /**
  * Keeps the global `dept_leader` role in step with department leadership.
- * Admin and finance roles are never changed by this.
+ * Admin, finance and cafe roles are never changed by this.
  */
 export function roleAfterLeadershipChange(current: Role, leadsAnyDepartment: boolean): Role {
-  if (current === "admin" || current === "finance") return current;
+  if (current === "admin" || current === "finance" || current === "cafe") return current;
   return leadsAnyDepartment ? "dept_leader" : "member";
 }
 

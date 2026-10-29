@@ -26,6 +26,7 @@ export default function Admin({ loaderData }: Route.ComponentProps) {
     { to: "/admin/members", title: "Members, roles & positions", note: `${active} active members` },
     { to: "/departments", title: "Departments", note: "Join requests, leaders, department attendance" },
     { to: "/attendance", title: "Fellowship attendance", note: "Programs the whole fellowship attends" },
+    { to: "/fasts", title: "Fasts & cafe", note: "Create fasts, see who's registered, scan QR codes" },
     { to: "/admin/telegram", title: "Telegram bot", note: "Connection status" },
   ];
   return (

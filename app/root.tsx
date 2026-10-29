@@ -70,6 +70,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
             <NavLink to="/" end>Home</NavLink>
             {data?.botUrl && !data.isMember && <a href={data.botUrl}>Register</a>}
             {data?.user && <NavLink to="/departments">Departments</NavLink>}
+            {data?.user && <NavLink to="/fasts">Fasts</NavLink>}
             {data?.isAdmin && <NavLink to="/admin">Admin</NavLink>}
             {data?.user ? <NavLink to="/account">My account</NavLink> : <NavLink to="/login">Sign in</NavLink>}
           </nav>

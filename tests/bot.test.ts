@@ -75,7 +75,7 @@ describe("bot helpers", () => {
   it("form schema ignores any submitted phone", () => {
     const r = registrationFormSchema.parse({
       fullName: "Abebe Kebede", gender: "male", studentId: "UGR/1/16", fieldOfStudy: "Law",
-      yearOfStudy: "1", contentLanguage: "am", phone: "0911000000",
+      yearOfStudy: "1", contentLanguage: "am", phone: "0911000000", birthDate: "2005-01-01",
     });
     expect("phone" in r).toBe(false);
   });
