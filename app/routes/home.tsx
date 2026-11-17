@@ -24,7 +24,11 @@ export default function Home() {
         <h1>{t.title}</h1>
         <p className="hero-tagline">{t.tagline}</p>
         <div className="hero-actions" lang="en">
-          <Link to="/register" className="btn btn-primary">Register as a member</Link>
+          {root?.isMember ? (
+            <Link to="/account" className="btn btn-primary">Open my account</Link>
+          ) : (
+            <Link to="/register" className="btn btn-primary">Register as a member</Link>
+          )}
           {!signedIn && <Link to="/login" className="btn btn-quiet">Sign in</Link>}
         </div>
       </section>
