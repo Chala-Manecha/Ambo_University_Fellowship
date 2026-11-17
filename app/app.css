@@ -24,19 +24,7 @@
   color-scheme: light;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --lapis: #9fb0f0;
-    --lapis-ink: #e8e9f2;
-    --gold: #d7ad5a;
-    --red: #e07a84;
-    --stone: #a5a8b8;
-    --paper: #12142a;
-    --line: #2c3052;
-    --surface: #1a1d38;
-    color-scheme: dark;
-  }
-}
+
 
 *,
 *::before,
@@ -278,7 +266,7 @@ h2 { margin-top: 2rem; }
    Dashboards (same look as the Dekike Yohannis site)
    ===================================================================== */
 :root { --bar-1: #1c5a98; --bar-2: #2d79c2; --green: #1f8f4e; }
-@media (prefers-color-scheme: dark) { :root { --bar-1: #1d4a7a; --bar-2: #275f99; --green: #2a9d5c; } }
+
 
 .dash { background: color-mix(in srgb, var(--lapis) 5%, var(--paper)); min-height: 70vh; padding-bottom: 3rem; }
 .dash-hero { background: linear-gradient(135deg, #1f2e6b 0%, #2b3f8f 55%, #3b2a6b 100%); color: #fff;
@@ -317,10 +305,7 @@ h2 { margin-top: 2rem; }
 .tile--red { --t: #8e1f2b; }
 .tile--slate { --t: #4a5063; }
 .tile { background: color-mix(in srgb, var(--t) 11%, var(--surface)); color: var(--t); border-color: color-mix(in srgb, var(--t) 24%, var(--surface)); }
-@media (prefers-color-scheme: dark) {
-  .tile--lapis { --t: #9fb0f0; } .tile--gold { --t: #e2bd6c; } .tile--green { --t: #7fd3a1; } .tile--red { --t: #f0939c; } .tile--slate { --t: #b4b8c6; }
-  .tile { background: color-mix(in srgb, var(--t) 14%, var(--surface)); }
-}
+
 @media (max-width: 30rem) {
   .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.5rem; }
   .tile { padding: 0.6rem 0.75rem; border-radius: 10px; }
@@ -422,3 +407,69 @@ h2 { margin-top: 2rem; }
   color: var(--bar-1); border: 1.5px dashed var(--bar-2); border-radius: 12px; padding: 0.55rem 1rem; font-weight: 700; }
 .add-panel > summary::-webkit-details-marker { display: none; }
 .add-panel[open] > summary { background: var(--bar-1); color: #fff; border-style: solid; border-color: var(--bar-1); }
+
+/* =====================================================================
+   White theme (always light): blue bars, green for what's selected,
+   tinted table heads and filter bars, cards everywhere
+   ===================================================================== */
+:root {
+  color-scheme: light;
+  --paper: #eef2f7;
+  --surface: #ffffff;
+  --line: #dde5ef;
+  --table-head: #eaf1fa;
+  --table-zebra: #f7f9fc;
+  --table-hover: #eef5ff;
+  --filter-bg: #f4f8fd;
+}
+html, body { background: var(--paper); color: var(--lapis-ink); }
+.site-header { background: #fff; box-shadow: 0 2px 10px rgb(21 23 42 / 0.06); border-bottom: 3px solid var(--bar-1); }
+.site-header nav a.active { border-bottom-color: var(--green); color: var(--bar-1); font-weight: 600; }
+.site-footer { background: #fff; }
+.page { background: transparent; }
+
+/* Tables: blue-tinted head, zebra rows, hover */
+.table-wrap { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; overflow-x: auto; box-shadow: 0 2px 10px rgb(21 23 42 / 0.04); }
+.card .table-wrap, .dash-card .table-wrap { box-shadow: none; }
+table thead th, .dash-table thead th { background: var(--table-head); color: var(--bar-1); font-weight: 700; border-bottom: 2px solid #cfdcec; }
+table tbody tr:nth-child(even) td { background: var(--table-zebra); }
+table tbody tr:hover td { background: var(--table-hover); }
+
+/* Filter bars: soft blue panel */
+.filter-card { background: var(--filter-bg); border-color: #d6e3f2; }
+.chips-label { color: var(--bar-1); }
+
+/* Forms and cards on white */
+.field input, .field select, .field textarea { background: #fff; }
+.dept-card, .card, .dash-card, .member-card, .stat, .tab { background: #fff; }
+.btn-primary { background: var(--bar-1); }
+.btn-primary:hover { filter: brightness(1.1); }
+.notice { background: #fff8e8; border-left-color: var(--gold); padding: 0.6rem 0.9rem; border-radius: 8px; }
+.form-error { background: #fdeef0; padding: 0.6rem 0.9rem; border-radius: 8px; }
+
+/* ---------- Member dashboard ---------- */
+.member-head h1 { margin-top: 0.2rem; }
+.member-dash .card h2 { font-size: 1.1rem; margin: 0 0 0.75rem; }
+.member-dash .member-card { margin-left: auto; margin-right: auto; }
+.pay-dl { display: grid; grid-template-columns: max-content 1fr; gap: 0.3rem 1rem; margin: 0 0 0.75rem; }
+.pay-dl dt { color: var(--stone); }
+.pay-dl dd { margin: 0; }
+.acct-number { font-size: 1.2rem; letter-spacing: 0.04em; user-select: all; }
+.month-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(8.5rem, 1fr)); gap: 0.5rem; }
+.month-cell { display: grid; gap: 0.1rem; padding: 0.55rem 0.7rem; border-radius: 10px; border: 1px solid var(--line); background: #fff; font-size: 0.9rem; }
+.month-cell small { font-weight: 700; font-size: 0.75rem; }
+.month-cell.pay-approved { background: #e3f3e9; border-color: #bfe3cc; color: #1d5c37; }
+.month-cell.pay-pending { background: #fbf1dc; border-color: #ecd6a3; color: #6b4a0d; }
+.month-cell.pay-unpaid { background: #fbe6e8; border-color: #f1c4c9; color: #8e1f2b; }
+.month-cell.is-current { outline: 2px solid var(--bar-1); outline-offset: 1px; }
+.pill-pay-approved { border-color: #1f8f4e; color: #1d5c37; background: #e3f3e9; }
+.pill-pay-pending { border-color: #b8892e; color: #6b4a0d; background: #fbf1dc; }
+.pill-pay-unpaid { border-color: #8e1f2b; color: #8e1f2b; background: #fbe6e8; }
+.receipt-preview { max-width: 12rem; border-radius: 8px; border: 1px solid var(--line); margin-top: 0.4rem; }
+.review-list { display: grid; gap: 0.75rem; }
+.review-item { display: grid; grid-template-columns: 8rem 1fr; gap: 1rem; align-items: start; margin: 0; }
+.review-item p { margin: 0 0 0.3rem; }
+.receipt-thumb img { width: 8rem; height: 10rem; object-fit: cover; border-radius: 8px; border: 1px solid var(--line); background: var(--table-head); }
+.review-actions { flex-wrap: wrap; }
+.review-actions input { font: inherit; font-size: 0.85rem; padding: 0.3rem 0.5rem; border: 1px solid var(--line); border-radius: 6px; flex: 1 1 12rem; }
+@media (max-width: 30rem) { .review-item { grid-template-columns: 1fr; } .receipt-thumb img { width: 100%; height: 12rem; } }

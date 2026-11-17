@@ -14,7 +14,7 @@ export const PERMISSIONS = {
   "attendance:fellowship": ["admin"], // whole-fellowship sessions
   "fast:manage": ["admin"], // create fasts, add people
   "fast:scan": ["admin", "cafe"], // scan QR codes at the cafe
-  "member:list": ["admin", "dept_leader"],
+  "member:list": ["admin"], // plus leaders of አባላት ጉዳይ / ባች እና ዲፓርትመንት, see canListMembers()
   "attendance:record": ["admin", "dept_leader"],
   "course:manage": ["admin"],
   "finance:record": ["admin", "finance"],

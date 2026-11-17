@@ -72,6 +72,18 @@ Interface in English; homepage and description text in Afaan Oromoo and Amharic 
 - Each department page has tiles and tabs: Members, Requests, Attendance.
 - Logic is in `app/lib/dashboard.ts` and `app/lib/member-filters.ts`, tested in `tests/dashboard.test.ts`.
 
+## Monthly contributions, member dashboard, who sees what
+- **My account** is the member dashboard: header card, tabs Home / Payment / Attendance / Departments.
+  Home shows this month's payment status, attendance %, the current fast and the member QR.
+- **Payment:** the member sees the fellowship account and their rate (students vs graduated), picks the EC months
+  (6 back to 3 ahead), enters the amount and attaches a receipt photo (private, in R2 under `receipts/`).
+  A month can't be paid twice. Leaders and admins get a Telegram message.
+- **/dues** (admins and ባች እና ዲፓርትመንት leaders): review receipts (approve / reject with a note; rejecting frees
+  the months), who paid per month with ← → and filters, and the amounts + account settings. The member is told on Telegram.
+- **Members list** (`/members`): admins and leaders of አባላት ጉዳይ (`miseensa`) and ባች እና ዲፓርትመንት (`baachii`).
+  Other leaders see only their own department's members. Rules in `app/lib/departments.ts`, tested.
+- The site is always light (white theme); it no longer follows the phone's dark mode.
+
 ## Making the first admin
 Sign in once with Telegram, then:
 ```

@@ -20,6 +20,8 @@ export default [
   route("dashboard", "routes/dashboard.tsx"),
   route("members", "routes/members.tsx"),
   route("members.csv", "routes/members.csv.ts"),
+  route("dues", "routes/dues.tsx"),
+  route("receipts/:id", "routes/receipts.$id.ts"),
   route("admin", "routes/admin.tsx"),
   route("admin/members", "routes/admin.members.tsx"),
   route("admin/registrations", "routes/admin.registrations.tsx"),

@@ -9,13 +9,13 @@ import { filterMembers, toCsv } from "../lib/member-filters";
 import { loadMemberList } from "../lib/members.server";
 import { can } from "../lib/permissions";
 import { formatYear } from "../lib/registration";
-import { requirePermission } from "../lib/session.server";
+import { requireMemberList } from "../lib/access.server";
 
 /** The members list as CSV, with the same filters as the page. */
 export async function loader({ request, context }: Route.LoaderArgs) {
   const { env } = context.cloudflare;
-  const user = await requirePermission(request, env, "member:list");
   const db = getDb(env.DB);
+  const { user } = await requireMemberList(request, env, db);
   const lang = langFromCookie(request.headers.get("Cookie"));
   const [members, departments] = await Promise.all([
     loadMemberList(db),

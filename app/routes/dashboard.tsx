@@ -6,7 +6,9 @@ import { DashCard, Tile, Tiles } from "../components/Dash";
 import { LEARNING, SERVICES } from "../content/member-options";
 import { getDb, schema } from "../db";
 import { departmentStats, memberStats } from "../lib/dashboard";
-import { departmentName, isPosition, POSITION_LABELS, todayInAddis } from "../lib/departments";
+import { dueMonth, formatMonth } from "../lib/contributions";
+import { monthPayRows, pendingContributions } from "../lib/contributions.server";
+import { canListMembers, canManageDues, departmentName, isPosition, POSITION_LABELS, todayInAddis } from "../lib/departments";
 import { getLeaderDepartmentIds } from "../lib/departments.server";
 import { formatEc } from "../lib/ethiopian-date";
 import { isFastOn, MEAL_LABELS } from "../lib/fasts";
@@ -32,7 +34,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   const position = (await db.query.user.findFirst({ where: eq(schema.user.id, user.id), columns: { position: true } }))?.position ?? null;
 
   // Members: counts by status, gender, year, and what people want to serve in / learn
-  const members = can(role, "member:list")
+  const members = canListMembers(role, leaderOf)
     ? memberStats(
         (
           await db
@@ -98,6 +100,22 @@ export async function loader({ request, context }: Route.LoaderArgs) {
       })()
     : null;
 
+  // Monthly contributions: admins and ባች እና ዲፓርትመንት leaders
+  const dues = canManageDues(role, leaderOf)
+    ? await (async () => {
+        const month = dueMonth(today);
+        const [pending, pay] = await Promise.all([pendingContributions(db), monthPayRows(db, month)]);
+        return {
+          month,
+          toReview: pending.length,
+          paid: pay.rows.filter((r) => r.status === "approved").length,
+          waiting: pay.rows.filter((r) => r.status === "pending").length,
+          unpaid: pay.rows.filter((r) => r.status === "unpaid").length,
+          collected: pay.collected,
+        };
+      })()
+    : null;
+
   // Recent whole-fellowship attendance
   const fellowship = can(role, "attendance:fellowship")
     ? await db
@@ -119,13 +137,14 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     departments,
     fasts,
     fellowship,
+    dues,
   };
 }
 
 export default function Dashboard({ loaderData }: Route.ComponentProps) {
   const root = useRouteLoaderData<typeof rootLoader>("root");
   const lang = root?.lang ?? DEFAULT_LANG;
-  const { name, role, position, today, isAdmin, canManage, members, departments, fasts, fellowship } = loaderData;
+  const { name, role, position, today, isAdmin, canManage, members, departments, fasts, fellowship, dues } = loaderData;
   const requests = departments.reduce((n, d) => n + d.requests, 0);
 
   return (
@@ -140,6 +159,9 @@ export default function Dashboard({ loaderData }: Route.ComponentProps) {
       </header>
 
       <div className="dash-body">
+        {members && !canManage && (
+          <Link to="/members" className="dash-alert">👥 Open the members list</Link>
+        )}
         {members && members.pending > 0 && canManage && (
           <Link to="/admin/registrations" className="dash-alert">📝 {members.pending} registration{members.pending === 1 ? "" : "s"} waiting for review</Link>
         )}
@@ -200,6 +222,18 @@ export default function Dashboard({ loaderData }: Route.ComponentProps) {
                 </table>
               </div>
             </div>
+          </DashCard>
+        )}
+
+        {dues && (
+          <DashCard id="d-dues" title={<>Contributions · <span lang={lang}>{formatMonth(dues.month, lang)}</span></>}>
+            <Tiles>
+              <Tile to="/dues?tab=review" n={dues.toReview} label="To review" tone={dues.toReview ? "gold" : "slate"} />
+              <Tile to="/dues?tab=month&status=approved" n={dues.paid} label="Paid" tone="green" />
+              <Tile to="/dues?tab=month&status=pending" n={dues.waiting} label="Waiting review" tone="slate" />
+              <Tile to="/dues?tab=month&status=unpaid" n={dues.unpaid} label="Not paid" tone={dues.unpaid ? "red" : "slate"} />
+              <Tile to="/dues?tab=month" n={`${dues.collected.toLocaleString("en-US")} birr`} label="Collected" tone="green" />
+            </Tiles>
           </DashCard>
         )}
 
@@ -276,6 +310,7 @@ export default function Dashboard({ loaderData }: Route.ComponentProps) {
               <Link to="/admin/members" className="btn btn-quiet btn-sm">🎖️ Roles & positions</Link>
               <Link to="/attendance" className="btn btn-quiet btn-sm">✅ Fellowship attendance</Link>
               <Link to="/fasts" className="btn btn-quiet btn-sm">🍲 Fasts</Link>
+              <Link to="/dues" className="btn btn-quiet btn-sm">💳 Contributions</Link>
               <Link to="/admin/telegram" className="btn btn-quiet btn-sm">🤖 Telegram bot</Link>
             </div>
           </DashCard>

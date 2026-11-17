@@ -13,7 +13,7 @@ import { filterMembers } from "../lib/member-filters";
 import { loadMemberList } from "../lib/members.server";
 import { can } from "../lib/permissions";
 import { formatYear } from "../lib/registration";
-import { requirePermission } from "../lib/session.server";
+import { requireMemberList } from "../lib/access.server";
 
 export function meta() {
   return [{ title: "Members · Gibi Gubae" }];
@@ -21,8 +21,8 @@ export function meta() {
 
 export async function loader({ request, context }: Route.LoaderArgs) {
   const { env } = context.cloudflare;
-  const user = await requirePermission(request, env, "member:list");
   const db = getDb(env.DB);
+  const { user } = await requireMemberList(request, env, db);
   const [members, departments] = await Promise.all([
     loadMemberList(db),
     db.query.departments.findMany({ orderBy: asc(schema.departments.sortOrder) }),

@@ -249,3 +249,64 @@ export const loginAttempts = sqliteTable("login_attempts", {
   failures: integer("failures").notNull(),
   windowStart: integer("window_start").notNull(), // ms
 });
+
+/* ---------- Monthly contributions ---------- */
+
+/**
+ * A payment a member submits: amount, which EC months it covers, and a receipt screenshot
+ * (private, in R2). A ባች እና ዲፓርትመንት leader or an admin approves or rejects it.
+ */
+export const contributions = sqliteTable(
+  "contributions",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    memberId: text("member_id")
+      .notNull()
+      .references(() => members.id, { onDelete: "cascade" }),
+    amount: integer("amount").notNull(), // birr
+    // Rate and standing when submitted, so old records survive rate changes
+    monthlyRate: integer("monthly_rate").notNull(),
+    memberKind: text("member_kind", { enum: ["student", "graduate"] }).notNull(),
+    months: text("months", { mode: "json" }).$type<[number, number][]>().notNull(), // [[ecYear, ecMonth], ...]
+    note: text("note"),
+    receiptKey: text("receipt_key").notNull(),
+    status: text("status", { enum: ["pending", "approved", "rejected"] }).notNull().default("pending"),
+    reviewNote: text("review_note"),
+    reviewedBy: text("reviewed_by").references(() => user.id, { onDelete: "set null" }),
+    reviewedAt: integer("reviewed_at", { mode: "timestamp_ms" }),
+    ...timestamps,
+  },
+  (t) => [index("contributions_status_idx").on(t.status), index("contributions_member_idx").on(t.memberId)],
+);
+
+/**
+ * Months claimed by pending or approved contributions. The unique index makes the database
+ * refuse paying the same month twice; rows are removed when a contribution is rejected.
+ */
+export const contributionMonths = sqliteTable(
+  "contribution_months",
+  {
+    contributionId: text("contribution_id")
+      .notNull()
+      .references(() => contributions.id, { onDelete: "cascade" }),
+    memberId: text("member_id")
+      .notNull()
+      .references(() => members.id, { onDelete: "cascade" }),
+    ecYear: integer("ec_year").notNull(),
+    ecMonth: integer("ec_month").notNull(),
+  },
+  (t) => [
+    uniqueIndex("contribution_months_unique").on(t.memberId, t.ecYear, t.ecMonth),
+    index("contribution_months_period_idx").on(t.ecYear, t.ecMonth),
+  ],
+);
+
+/** Small key/value settings (monthly rates, the fellowship's payment account). Values are JSON. */
+export const settings = sqliteTable("settings", {
+  key: text("key").primaryKey(),
+  value: text("value", { mode: "json" }).notNull(),
+  updatedBy: text("updated_by").references(() => user.id, { onDelete: "set null" }),
+  ...timestamps,
+});

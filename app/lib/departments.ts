@@ -23,6 +23,20 @@ export function isPosition(v: unknown): v is Position {
 
 /* ---------- Access ---------- */
 
+/** Departments with fellowship-wide jobs (ids from migration 0002). */
+export const MEMBER_AFFAIRS = "miseensa"; // አባላት ጉዳይ
+export const BATCH_DEPT = "baachii"; // ባች እና ዲፓርትመንት
+
+/** The full members list (all details): admins and leaders of አባላት ጉዳይ or ባች እና ዲፓርትመንት. */
+export function canListMembers(role: Role, leaderOf: readonly string[]) {
+  return role === "admin" || leaderOf.includes(MEMBER_AFFAIRS) || leaderOf.includes(BATCH_DEPT);
+}
+
+/** Monthly contributions (rates, the account, approving payments): admins and ባች እና ዲፓርትመንት leaders. */
+export function canManageDues(role: Role, leaderOf: readonly string[]) {
+  return role === "admin" || leaderOf.includes(BATCH_DEPT);
+}
+
 /** Admins manage every department; leaders manage only the ones they lead. */
 export function canManageDepartment(role: Role, leaderOf: readonly string[], departmentId: string) {
   return role === "admin" || leaderOf.includes(departmentId);

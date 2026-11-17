@@ -36,6 +36,13 @@
       "when": 1794910049970,
       "tag": "0004_student_login_fast_types",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1794912767313,
+      "tag": "0005_contributions",
+      "breakpoints": true
     }
   ]
 }
