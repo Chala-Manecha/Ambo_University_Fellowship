@@ -10,6 +10,9 @@ export const BOT = {
     "Baga nagaan dhuftan! Yaa'ii Mooraa Kaampaasii Hacaaluu Hundeessaa. Galmaa'uuf ykn akkaawuntii keessan banuuf armaan gadi tuqaa.\n\n" +
     "እንኳን በደኅና መጡ! ሃጫሉ ሁንዴሳ ካምፓስ ግቢ ጉባኤ። ለመመዝገብ ወይም መለያዎን ለመክፈት ከታች ይጫኑ።",
   openButton: "Akkaawuntii koo bani / መለያዬን ክፈት",
+  linked: "✅ Telegram keessan akkaawuntii keessanitti hidhameera. Amma marsariitii irratti itti fufaa.\n\n✅ ቴሌግራምዎ ከመለያዎ ጋር ተገናኝቷል። አሁን በድረ-ገጹ ይቀጥሉ።",
+  linkExpired: "Koodiin kun yeroon isaa darbeera. Marsariitii irratti \"Connect Telegram\" irra deebi'aa tuqaa.\n\nይህ ኮድ ጊዜው አልፎበታል። በድረ-ገጹ \"Connect Telegram\" እንደገና ይጫኑ።",
+  linkTaken: "Telegram kun miseensa biraatti hidhameera.\n\nይህ ቴሌግራም ከሌላ አባል ጋር ተገናኝቷል።",
 } as const;
 
 export const MEMBER_DECISION: Record<ContentLang, { approved: string; rejected: string }> = {

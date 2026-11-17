@@ -310,3 +310,12 @@ export const settings = sqliteTable("settings", {
   updatedBy: text("updated_by").references(() => user.id, { onDelete: "set null" }),
   ...timestamps,
 });
+
+/** One-time codes for "Connect Telegram": t.me/<bot>?start=link_<token> ties that Telegram account to the user. */
+export const telegramLinkTokens = sqliteTable("telegram_link_tokens", {
+  token: text("token").primaryKey(),
+  userId: text("user_id")
+    .notNull()
+    .references(() => user.id, { onDelete: "cascade" }),
+  expiresAt: integer("expires_at").notNull(), // ms
+});

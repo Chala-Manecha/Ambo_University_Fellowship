@@ -473,3 +473,34 @@ table tbody tr:hover td { background: var(--table-hover); }
 .review-actions { flex-wrap: wrap; }
 .review-actions input { font: inherit; font-size: 0.85rem; padding: 0.3rem 0.5rem; border: 1px solid var(--line); border-radius: 6px; flex: 1 1 12rem; }
 @media (max-width: 30rem) { .review-item { grid-template-columns: 1fr; } .receipt-thumb img { width: 100%; height: 12rem; } }
+.connect-tg { border: 2px solid var(--bar-2); background: #f2f8ff; }
+.connect-tg h2 { margin-top: 0; color: var(--bar-1); }
+.connect-tg ol { padding-left: 1.2rem; }
+
+/* ---------- Roles & positions ---------- */
+.role-legend { margin: 0; padding-left: 1.1rem; display: grid; gap: 0.3rem; font-size: 0.9rem; }
+.role-list { display: grid; gap: 0.6rem; }
+.role-row { margin: 0; display: grid; gap: 0.6rem; }
+.role-who { display: grid; gap: 0.1rem; }
+.role-form { display: grid; gap: 0.5rem; grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr)); align-items: end; }
+.role-form .field { gap: 0.15rem; }
+.role-form .field > span { font-size: 0.8rem; color: var(--stone); font-weight: 600; }
+.role-form select { font: inherit; padding: 0.45rem 0.5rem; border: 1px solid var(--line); border-radius: 6px; background: #fff; width: 100%; }
+.role-form .readonly { padding: 0.45rem 0.5rem; }
+.link-btn { background: none; border: 0; padding: 0; font: inherit; font-size: 0.85rem; color: var(--bar-1); cursor: pointer; text-decoration: underline; }
+
+/* ---------- ☰ Menu (drawer) ---------- */
+.header-actions { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+.menu-toggle { display: inline-flex; gap: 0.4rem; align-items: center; font: inherit; font-weight: 600; background: #fff; border: 1px solid var(--line);
+  border-radius: 999px; padding: 0.35rem 0.9rem; color: var(--bar-1); cursor: pointer; }
+.menu-backdrop { position: fixed; inset: 0; z-index: 70; border: 0; padding: 0; background: rgba(10, 20, 40, 0.45); cursor: pointer; }
+.drawer { position: fixed; top: 0; right: 0; bottom: 0; z-index: 80; width: min(20rem, 88vw); background: #fff; box-shadow: -8px 0 24px rgb(21 23 42 / 0.18);
+  transform: translateX(105%); transition: transform 0.18s ease; overflow-y: auto; padding: 0.75rem 1.1rem 2rem; display: flex; flex-direction: column; visibility: hidden; }
+.drawer.is-open { transform: none; visibility: visible; }
+.drawer-head { display: flex; justify-content: space-between; align-items: center; padding: 0.4rem 0 0.8rem; border-bottom: 2px solid var(--bar-1); margin-bottom: 0.4rem; }
+.drawer a { text-decoration: none; color: var(--lapis-ink); padding: 0.65rem 0.4rem; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; gap: 0.5rem; }
+.drawer a.active { color: var(--bar-1); font-weight: 700; background: var(--table-head); border-radius: 6px; }
+.drawer-section { margin: 1rem 0 0.2rem; font-size: 0.75rem; font-weight: 700; color: var(--stone); text-transform: uppercase; letter-spacing: 0.06em; }
+.drawer-tag { font-size: 0.7rem; font-weight: 700; color: #fff; background: var(--green); border-radius: 999px; padding: 0.05rem 0.5rem; align-self: center; }
+.drawer-signout { margin-top: 0.75rem; }
+@media (prefers-reduced-motion: reduce) { .drawer { transition: none; } }

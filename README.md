@@ -84,6 +84,16 @@ Interface in English; homepage and description text in Afaan Oromoo and Amharic 
   Other leaders see only their own department's members. Rules in `app/lib/departments.ts`, tested.
 - The site is always light (white theme); it no longer follows the phone's dark mode.
 
+## Telegram is required, roles, menu
+- After registering, a member must **Connect Telegram**: the button opens `t.me/<bot>?start=link_<code>`
+  (one-time code, 30 minutes); pressing Start links that Telegram account. Until then My dashboard, fast
+  registration and payments are locked. Codes live in `telegram_link_tokens`.
+- Registration accepts English letters only (names, field of study, notes).
+- **Roles & positions** (`/admin/members`): Position (ዋና ሰብሳቢ / ምክትል ሰብሳቢ / ጸሐፊ) gives admin access and removing
+  it removes it; **Leads department** appoints the department leader (one department per person); Role for
+  Cafe coordinator / Finance / Admin without a position.
+- **☰ Menu**: everything the person can open, plus all departments (admins manage all; leaders their own).
+
 ## Making the first admin
 Sign in once with Telegram, then:
 ```
