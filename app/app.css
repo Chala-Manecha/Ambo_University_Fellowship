@@ -660,3 +660,4 @@ table tbody tr:hover td { background: var(--table-hover); }
 .welcome-done { margin: 0; color: #1d6b3f; font-weight: 700; }
 .welcome-bot-name { margin: 0; font-size: 1.2rem; font-weight: 700; color: var(--bar-1); }
 .welcome-open { font-size: 1.1rem; padding: 0.8rem; }
+.meal-tabs b { margin-left: 0.25rem; font-size: 0.8rem; background: #e6eef8; color: var(--bar-1); border-radius: 999px; padding: 0 0.45rem; }

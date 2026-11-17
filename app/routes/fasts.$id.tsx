@@ -1,4 +1,5 @@
 import { and, eq, sql } from "drizzle-orm";
+import { alias } from "drizzle-orm/sqlite-core";
 import { Form, Link, redirect, useNavigation, useRouteLoaderData, useSearchParams } from "react-router";
 import type { Route } from "./+types/fasts.$id";
 import type { loader as rootLoader } from "../root";
@@ -11,6 +12,8 @@ import { formatEc } from "../lib/ethiopian-date";
 import {
   FAST_TYPE_LABELS,
   FAST_TYPES,
+  addisHour,
+  defaultMeal,
   MAX_SCANNERS,
   MEALS_PER_DAY,
   fastDays,
@@ -67,6 +70,23 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
     .from(schema.fastCheckins)
     .where(and(eq(schema.fastCheckins.fastId, fast.id), eq(schema.fastCheckins.date, day)));
   const eatenSet = new Set(eaten.map((e) => `${e.memberId}:${e.meal}`));
+  // Scan log for the shown day: who ate which meal, and who scanned them
+  const scannerMember = alias(schema.members, "scanner_member");
+  const log = await db
+    .select({
+      memberId: schema.fastCheckins.memberId,
+      meal: schema.fastCheckins.meal,
+      at: schema.fastCheckins.createdAt,
+      studentId: schema.members.studentId,
+      fullName: schema.members.fullName,
+      scannerName: sql<string | null>`coalesce(${scannerMember.fullName}, ${schema.user.name})`,
+    })
+    .from(schema.fastCheckins)
+    .innerJoin(schema.members, eq(schema.members.id, schema.fastCheckins.memberId))
+    .leftJoin(schema.user, eq(schema.user.id, schema.fastCheckins.scannedBy))
+    .leftJoin(scannerMember, eq(scannerMember.userId, schema.fastCheckins.scannedBy))
+    .where(and(eq(schema.fastCheckins.fastId, fast.id), eq(schema.fastCheckins.date, day)))
+    .orderBy(schema.fastCheckins.createdAt);
   const todayCount = new Map<string, number>();
   for (const e of eaten) todayCount.set(e.memberId, (todayCount.get(e.memberId) ?? 0) + 1);
   const canManage = can(user.role, "fast:manage");
@@ -96,6 +116,8 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
     totalDays: days.length,
     canManage,
     listPath: listPath(request.url),
+    log: log.map((l) => ({ ...l, at: l.at.getTime() })),
+    defaultMeal: day === today ? defaultMeal(fast.meals, addisHour()) : fast.meals[0],
     scanners,
     activeMembers,
     registrants: registrants.map((r) => ({
@@ -187,7 +209,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   throw new Response("Unknown action", { status: 400 });
 }
 
-const TABS = ["registered", "daily"] as const;
+const TABS = ["registered", "daily", "scans"] as const;
 
 export default function FastPage({ loaderData, actionData }: Route.ComponentProps) {
   const root = useRouteLoaderData<typeof rootLoader>("root");
@@ -195,7 +217,7 @@ export default function FastPage({ loaderData, actionData }: Route.ComponentProp
   const nav = useNavigation();
   const busy = nav.state !== "idle";
   const [params] = useSearchParams();
-  const { fast, isOn, today, day, prevDay, nextDay, dayNumber, totalDays, canManage, registrants, scanners, activeMembers, listPath } = loaderData;
+  const { fast, isOn, today, day, prevDay, nextDay, dayNumber, totalDays, canManage, registrants, scanners, activeMembers, listPath, log } = loaderData;
   const tab = pickParam(params.get("tab"), TABS) ?? "registered";
   const type = pickParam(params.get("type"), FAST_TYPES);
   const q = params.get("q") ?? "";
@@ -228,14 +250,15 @@ export default function FastPage({ loaderData, actionData }: Route.ComponentProp
       <nav className="seg-tabs" aria-label="View">
         <Link to={keep({ tab: "registered" })} aria-current={tab === "registered" ? "page" : undefined} preventScrollReset>📋 Registered</Link>
         <Link to={keep({ tab: "daily" })} aria-current={tab === "daily" ? "page" : undefined} preventScrollReset>📅 Daily tracker</Link>
+        <Link to={keep({ tab: "scans" })} aria-current={tab === "scans" ? "page" : undefined} preventScrollReset>📷 Scan log</Link>
       </nav>
 
-      <Counts
+      {tab !== "scans" && <Counts
         items={[
           { to: keep({ type: null }), n: typeCounts.all, label: "All", active: !type },
           ...FAST_TYPES.map((t) => ({ to: keep({ type: t }), n: typeCounts[t], label: `${MEALS_PER_DAY[t]} a day`, active: type === t })),
         ]}
-      />
+      />}
 
       <Form method="get" className="card filter-bar" role="search">
         {[...params.entries()].filter(([k]) => k !== "q").map(([k, v]) => <input key={k} type="hidden" name={k} value={v} />)}
@@ -311,6 +334,54 @@ export default function FastPage({ loaderData, actionData }: Route.ComponentProp
           </div>
         </>
       )}
+
+      {tab === "scans" && (() => {
+        const meal = (fast.meals as readonly string[]).includes(params.get("meal") ?? "") ? (params.get("meal") as Meal) : loaderData.defaultMeal;
+        const shown = log.filter((l) => l.meal === meal && matchesSearch(q, [l.fullName, l.studentId]));
+        const time = (ms: number) => new Date(ms).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: "Africa/Addis_Ababa" });
+        return (
+          <>
+            <div className="day-nav">
+              {prevDay ? <Link to={keep({ day: prevDay })} className="btn btn-quiet btn-sm" preventScrollReset>← Prev</Link> : <span className="btn btn-quiet btn-sm" aria-disabled="true">← Prev</span>}
+              <div className="day-nav-label">
+                <strong lang={lang}>{formatEc(day, lang)}</strong>
+                <span className="muted">Day {dayNumber} of {totalDays}{day === today ? " · today" : ""}</span>
+              </div>
+              {nextDay ? <Link to={keep({ day: nextDay })} className="btn btn-quiet btn-sm" preventScrollReset>Next →</Link> : <span className="btn btn-quiet btn-sm" aria-disabled="true">Next →</span>}
+            </div>
+            <nav className="seg-tabs meal-tabs" aria-label="Meal">
+              {fast.meals.map((m) => (
+                <Link key={m} to={keep({ meal: m })} aria-current={meal === m ? "page" : undefined} preventScrollReset lang={lang}>
+                  {MEAL_LABELS[m][lang]} <b>{log.filter((l) => l.meal === m).length}</b>
+                </Link>
+              ))}
+            </nav>
+            <div className="card table-card">
+              <div className="table-bar"><strong>{shown.length} served · {MEAL_LABELS[meal].en}</strong></div>
+              {shown.length === 0 ? (
+                <p className="muted table-empty">Nobody scanned for this meal on this day.</p>
+              ) : (
+                <div className="table-wrap">
+                  <table className="table-oneline">
+                    <thead><tr><th>#</th><th>Student ID</th><th>Full name</th><th>Scanned by</th><th>Time</th></tr></thead>
+                    <tbody>
+                      {shown.map((l, n) => (
+                        <tr key={l.memberId}>
+                          <td className="muted">{n + 1}</td>
+                          <td>{l.studentId}</td>
+                          <td><strong>{l.fullName}</strong></td>
+                          <td>{l.scannerName ?? <span className="muted">—</span>}</td>
+                          <td>{time(l.at)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </>
+        );
+      })()}
 
       {tab === "daily" && (
         <>

@@ -139,7 +139,7 @@ export default function Fasts({ loaderData, actionData }: Route.ComponentProps) 
             <input type="hidden" name="intent" value="create" />
             <label className="field">
               <span>Name</span>
-              <input name="name" required maxLength={80} placeholder="ጾመ ነቢያት / Soomii Nabiyyootaa" />
+              <input name="name" required maxLength={80} placeholder="ጾመ ነቢያት / Soomii Raajotaa" />
             </label>
             <div className="date-pair">
               <EcDatePicker name="startDate" label="Starts" lang={lang} defaultIso={today} minYear={ecYear - 1} maxYear={ecYear + 1} />
