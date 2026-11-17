@@ -508,3 +508,88 @@ table tbody tr:hover td { background: var(--table-hover); }
 .dept-tool:hover { background: var(--table-head); }
 .drawer-signout { margin-top: 0.75rem; }
 @media (prefers-reduced-motion: reduce) { .drawer { transition: none; } }
+
+/* ---------- Member | Leadership switch ---------- */
+.mode-switch { display: flex; gap: 0.25rem; margin: 0.6rem auto 0; width: min(100% - 2rem, 72rem); padding: 0.25rem; background: #eef1f6; border: 1px solid var(--line); border-radius: 14px; }
+.mode-switch a { flex: 1; text-align: center; padding: 0.5rem 0.75rem; border-radius: 10px; text-decoration: none; color: var(--lapis-ink); font-weight: 600; }
+.mode-switch a[aria-current="page"] { background: #4a6a8a; color: #fff; box-shadow: 0 2px 6px rgb(21 23 42 / 0.15); }
+
+/* ---------- Choice after sign-in ---------- */
+.portal-intro { text-align: center; color: var(--stone); }
+.portal { display: grid; gap: 1rem; }
+.portal-card { display: grid; justify-items: center; gap: 0.4rem; text-align: center; padding: 1.6rem 1rem; background: #fff; border: 1px solid var(--line);
+  border-radius: 20px; text-decoration: none; color: var(--lapis-ink); box-shadow: 0 4px 16px rgb(21 23 42 / 0.06); }
+.portal-card:hover { border-color: var(--bar-1); }
+.portal-card strong { font-size: 1.4rem; }
+.portal-card span:last-child { color: var(--stone); font-size: 0.92rem; }
+.portal-icon { font-size: 2rem; width: 3.5rem; height: 3.5rem; display: grid; place-items: center; border-radius: 50%; background: #e6eef8; }
+
+/* ---------- Leadership home ---------- */
+.dept-grid { display: grid; gap: 0.75rem; grid-template-columns: repeat(auto-fill, minmax(min(100%, 15rem), 1fr)); }
+.dept-card { display: grid; gap: 0.3rem; padding: 1rem 1.1rem; background: #fff; border: 1px solid var(--line); border-left: 4px solid var(--bar-1);
+  border-radius: 12px; text-decoration: none; color: var(--lapis-ink); }
+.dept-card:hover { background: var(--table-head); }
+.dept-card span { color: var(--stone); font-size: 0.88rem; }
+.dept-card--office { background: #1c2740; color: #fff; border-left-color: var(--gold); }
+.dept-card--office span { color: #c9d1e3; }
+.dept-card--office:hover { background: #24304d; }
+.dept-card-alert { color: #8a5e10; }
+
+/* ---------- Dark panel (ጽህፈት ቤት, departments) ---------- */
+.panel { background: #1c2740; color: #fff; border-radius: 22px; overflow: hidden; margin-bottom: 1rem; box-shadow: 0 6px 20px rgb(21 23 42 / 0.18); }
+.panel-top { padding: 1.1rem 1.25rem 0.9rem; }
+.panel-top h1 { color: #fff; margin: 0; font-size: clamp(1.35rem, 1.1rem + 1.2vw, 1.9rem); }
+.panel-sub p { margin: 0.3rem 0 0; color: #d6dceb; }
+.panel-date { display: inline-block; margin-top: 0.6rem !important; padding: 0.45rem 0.9rem; border: 1px solid rgb(255 255 255 / 0.18); border-radius: 10px; background: rgb(255 255 255 / 0.05); }
+.panel-date b { color: #e3b863; margin-right: 0.35rem; }
+.panel-nav { padding: 0.9rem 1.25rem 1.1rem; border-top: 1px solid rgb(255 255 255 / 0.1); background: #18223a; }
+.panel-back { display: inline-block; color: #e3b863; text-decoration: none; font-weight: 700; margin-bottom: 0.6rem; }
+.panel-row { display: grid; grid-template-columns: 6rem 1fr; gap: 0.6rem; align-items: center; padding: 0.3rem 0; }
+.panel-row-label { color: #e3b863; font-size: 0.8rem; font-weight: 700; }
+.panel-pills { display: flex; gap: 0.45rem; overflow-x: auto; scrollbar-width: none; padding: 2px; }
+.panel-pills::-webkit-scrollbar { display: none; }
+.panel-pill { flex: none; display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.45rem 0.85rem; border-radius: 999px; white-space: nowrap;
+  background: rgb(255 255 255 / 0.08); color: #f0f2f8; text-decoration: none; font-weight: 600; font-size: 0.9rem; border: 1px solid rgb(255 255 255 / 0.08); }
+.panel-pill:hover { background: rgb(255 255 255 / 0.16); }
+.panel-pill[aria-current="page"] { background: #f6efdf; color: #1c2740; border-color: #e3b863; box-shadow: inset 4px 0 0 #e3b863; }
+@media (max-width: 30rem) {
+  .panel-row { grid-template-columns: 4.6rem 1fr; }
+  .panel-pill { font-size: 0.82rem; padding: 0.4rem 0.7rem; }
+}
+/* A page shown inside a panel keeps its title and buttons but drops the big blue bar */
+.panel-content .page-head { background: none; color: var(--lapis-ink); box-shadow: none; padding: 0; margin: 0 0 0.75rem; border-radius: 0; }
+.panel-content .page-head h1 { color: var(--lapis-ink); font-size: 1.25rem; margin: 0; }
+.panel-content .page-head-sub { color: var(--stone); }
+.panel-content .back-btn { display: none; }
+.panel-content .page-head-actions a { border: 1px solid var(--line); }
+.panel-content > .page, .panel-content .page { padding: 0; margin: 0; width: auto; max-width: none; }
+
+/* ---------- Count buttons ---------- */
+.counts { display: flex; gap: 0.6rem; overflow-x: auto; scrollbar-width: none; padding: 2px 2px 0.5rem; margin-bottom: 0.5rem; }
+.counts::-webkit-scrollbar { display: none; }
+.count { flex: none; display: inline-flex; align-items: baseline; gap: 0.45rem; padding: 0.55rem 1.1rem; border-radius: 999px; background: #fff;
+  border: 1px solid var(--line); color: var(--lapis-ink); text-decoration: none; font-weight: 600; white-space: nowrap; }
+.count strong { font-size: 1.35rem; font-variant-numeric: tabular-nums; }
+.count[aria-current="page"] { background: #2c5f93; border-color: #2c5f93; color: #fff; box-shadow: 0 3px 0 #b9c0cc; }
+.count.is-alert:not([aria-current="page"]) strong { color: #8a5e10; }
+
+/* ---------- Filter card + action bar ---------- */
+.filter-bar { display: flex; flex-wrap: wrap; gap: 0.6rem 0.9rem; align-items: center; }
+.filter-field { display: flex; align-items: center; gap: 0.45rem; }
+.filter-field > span { font-size: 0.8rem; color: var(--stone); }
+.filter-field input, .filter-field select { font: inherit; padding: 0.45rem 0.6rem; border: 1px solid var(--line); border-radius: 10px; background: #fff; min-width: 0; }
+.filter-search { flex: 1 1 16rem; }
+.filter-search input { flex: 1; }
+.action-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.6rem; padding: 0.7rem 1rem; }
+.action-bar-buttons { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+.table-card { padding: 0; overflow: hidden; }
+.table-card .table-wrap { margin: 0; border: 0; }
+.who { display: inline-flex; align-items: center; gap: 0.6rem; }
+.avatar { flex: none; width: 2.1rem; height: 2.1rem; border-radius: 50%; display: grid; place-items: center; background: #e6eef8; color: #1f4f86;
+  font-weight: 700; border: 2px solid #c9daef; }
+.who-id { margin-left: 0.5rem; color: var(--stone); font-size: 0.85rem; }
+
+@media print {
+  .site-header, .site-footer, .mode-switch, .panel, .counts, .filter-bar, .action-bar, .page-head { display: none !important; }
+  .table-card { box-shadow: none; border: 0; }
+}

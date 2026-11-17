@@ -19,7 +19,8 @@ import { DEFAULT_LANG, langFromCookie } from "./lib/lang";
 import { asc, eq } from "drizzle-orm";
 import { getDb, schema } from "./db";
 import { getUser } from "./lib/session.server";
-import { can } from "./lib/permissions";
+import { can, hasDashboard } from "./lib/permissions";
+import { getLeaderDepartmentIds } from "./lib/departments.server";
 import { departmentName } from "./lib/departments";
 import "./app.css";
 
@@ -36,12 +37,13 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   const { env } = context.cloudflare;
   const user = await getUser(request, env);
   const db = getDb(env.DB);
-  const [isMember, departments] = user
+  const [isMember, leaderOf, departments] = user
     ? await Promise.all([
         db.query.members.findFirst({ where: eq(schema.members.userId, user.id), columns: { id: true } }).then(Boolean),
+        getLeaderDepartmentIds(db, user.id),
         db.query.departments.findMany({ orderBy: asc(schema.departments.sortOrder), columns: { id: true, nameOm: true, nameAm: true } }),
       ])
-    : [false, []];
+    : [false, [] as string[], []];
   const role = user?.role ?? "member";
   return {
     lang: langFromCookie(request.headers.get("Cookie")),
@@ -52,6 +54,8 @@ export async function loader({ request, context }: Route.LoaderArgs) {
       ? {
           // ጽህፈት ቤት: the three positions (and other admins) — roles & positions
           office: can(role, "member:manage"),
+          // Leaders and officers switch between their member dashboard and leadership
+          leadership: hasDashboard(role) || leaderOf.length > 0,
           departments,
         }
       : null,
@@ -85,7 +89,7 @@ function Menu({ data, lang }: { data: NonNullable<ReturnType<typeof useRouteLoad
         {data.user ? (
           <>
             {m?.office && (
-              <NavLink to="/admin/members" lang="am">
+              <NavLink to="/office" lang="am">
                 🏛️ ጽህፈት ቤት
               </NavLink>
             )}
@@ -108,6 +112,22 @@ function Menu({ data, lang }: { data: NonNullable<ReturnType<typeof useRouteLoad
         )}
       </nav>
     </>
+  );
+}
+
+/** Pages that belong to "Leadership"; everything else counts as the member side. */
+const LEADERSHIP_PATHS = ["/lead", "/office", "/departments/", "/dashboard", "/admin", "/members", "/dues", "/attendance"];
+
+/** "Member | Leadership" switch under the header, for people with a leadership job. */
+function ModeSwitch() {
+  const { pathname } = useLocation();
+  const lead = LEADERSHIP_PATHS.some((p) => pathname === p || pathname.startsWith(p.endsWith("/") ? p : `${p}/`));
+  const member = !lead && pathname.startsWith("/account");
+  return (
+    <nav className="mode-switch" aria-label="Switch view">
+      <Link to="/account" aria-current={member ? "page" : undefined}>Member</Link>
+      <Link to="/lead" aria-current={lead ? "page" : undefined}>Leadership</Link>
+    </nav>
   );
 }
 
@@ -137,6 +157,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
             {data && <LangSwitch current={data.lang} />}
           </div>
         </header>
+        {data?.menu?.leadership && <ModeSwitch />}
         <main>{children}</main>
         <footer className="site-footer">
           <div className="tilet tilet--thin" aria-hidden="true" />

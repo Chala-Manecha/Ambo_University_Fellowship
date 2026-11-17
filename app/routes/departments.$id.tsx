@@ -1,6 +1,7 @@
 import { and, asc, desc, eq, inArray } from "drizzle-orm";
-import { Form, Link, redirect, useNavigation, useRouteLoaderData, useSearchParams } from "react-router";
-import { PageHead, TabBar, Tile, Tiles } from "../components/Dash";
+import { Form, Link, redirect, useNavigation, useOutlet, useRouteLoaderData, useSearchParams } from "react-router";
+import { PageHead } from "../components/Dash";
+import { Counts, Panel, type PanelGroup } from "../components/Panel";
 import { pickParam } from "../lib/dashboard";
 import type { Route } from "./+types/departments.$id";
 import type { loader as rootLoader } from "../root";
@@ -69,16 +70,22 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
     };
   }
 
-  // Fellowship-wide tools that belong to this department
+  // Fellowship-wide pages this department runs; each opens inside the department's panel
+  const base = `/departments/${dept.id}`;
   const tools: { to: string; label: string; icon: string }[] = [];
   if (dept.id === MEMBER_AFFAIRS) {
-    if (canListMembers(user.role, leaderOf)) tools.push({ to: "/members", label: "Members", icon: "👥" });
-    if (can(user.role, "fast:manage") || can(user.role, "fast:scan")) tools.push({ to: "/fasts", label: "Fasts", icon: "🍲" });
-    if (can(user.role, "registration:review")) tools.push({ to: "/admin/registrations", label: "Registrations", icon: "📝" });
+    if (canListMembers(user.role, leaderOf)) tools.push({ to: `${base}/all-members`, label: "All members", icon: "👥" });
+    if (can(user.role, "fast:manage") || can(user.role, "fast:scan")) tools.push({ to: `${base}/fasts`, label: "Fasts", icon: "🍲" });
+    if (can(user.role, "registration:review")) tools.push({ to: `${base}/registrations`, label: "Registrations", icon: "📝" });
   }
   if (dept.id === BATCH_DEPT) {
-    if (canManageDues(user.role, leaderOf)) tools.push({ to: "/dues", label: "Contributions", icon: "💳" });
-    if (can(user.role, "attendance:fellowship")) tools.push({ to: "/attendance", label: "Fellowship attendance", icon: "✅" });
+    if (canManageDues(user.role, leaderOf)) tools.push({ to: `${base}/dues`, label: "Contributions", icon: "💳" });
+    if (can(user.role, "attendance:fellowship")) tools.push({ to: `${base}/attendance`, label: "Fellowship attendance", icon: "✅" });
+  }
+  // አባላት ጉዳይ opens on the whole fellowship's members list
+  const url = new URL(request.url);
+  if (url.pathname.replace(/\/+$/, "") === base && !url.searchParams.has("tab") && request.method === "GET" && tools[0]?.label === "All members") {
+    throw redirect(tools[0].to);
   }
 
   const people = await db
@@ -229,45 +236,44 @@ export default function Department({ loaderData, actionData }: Route.ComponentPr
   const nav = useNavigation();
   const busy = nav.state !== "idle";
   const [params] = useSearchParams();
+  const outlet = useOutlet();
   if (loaderData.view === "public") return <DepartmentPublic data={loaderData} lang={lang} busy={busy} />;
-  const { dept, isAdmin, today, pending, active, sessions, rate, tools } = loaderData;
+  const { dept, isAdmin, today, pending, active, sessions, tools } = loaderData;
   const message = actionData && "message" in actionData ? actionData.message : null;
   const error = actionData && "error" in actionData ? actionData.error : null;
-  const tab = pickParam(params.get("tab"), TABS) ?? (pending.length > 0 && !params.get("tab") ? "requests" : "members");
+  const tab = pickParam(params.get("tab"), TABS) ?? "members";
   const leaders = active.filter((p) => p.role === "leader");
+  const base = `/departments/${dept.id}`;
+  const groups: PanelGroup[] = [
+    {
+      label: "Department",
+      items: [
+        { to: `${base}?tab=members`, label: tools.some((t) => t.label === "All members") ? "Department members" : "Members", icon: "👥" },
+        { to: `${base}?tab=requests`, label: "Join requests", icon: "🙋" },
+        { to: `${base}?tab=attendance`, label: "Attendance", icon: "✅" },
+      ],
+    },
+    { label: "Fellowship", items: tools },
+  ];
 
   return (
-    <section className="page wide">
-      <PageHead
-        back={{ to: "/account", label: "My dashboard" }}
+    <section className="page wide panel-page">
+      <Panel
         title={departmentName(dept, lang)}
-        lang={lang}
-        sub={leaders.length ? <>Led by {leaders.map((l) => l.fullName).join(", ")}</> : "No leader yet"}
-        actions={<Link to="/departments">All departments</Link>}
+        titleLang={lang}
+        sub={<p>{leaders.length ? <>Led by {leaders.map((l) => l.fullName).join(", ")}</> : "No leader yet"}</p>}
+        back={{ to: "/lead", label: "All departments" }}
+        groups={groups}
+        defaultTab="members"
       />
+      <div className="panel-content">
+      {outlet ?? (
+      <>
       {message && <p className="notice" role="status">{message}</p>}
-
-      {tools.length > 0 && (
-        <nav className="dept-tools" aria-label="Department tools">
-          {tools.map((t) => (
-            <Link key={t.to} to={t.to} className="dept-tool"><span aria-hidden="true">{t.icon}</span> {t.label}</Link>
-          ))}
-        </nav>
-      )}
-
-      <Tiles>
-        <Tile to="?tab=members" n={active.length} label="Members" />
-        <Tile to="?tab=requests" n={pending.length} label="Join requests" tone={pending.length ? "gold" : "slate"} />
-        <Tile to="?tab=attendance" n={sessions.length} label="Sessions" tone="slate" />
-        <Tile to="?tab=attendance" n={rate === null ? "—" : `${rate}%`} label="Attendance" tone="green" />
-      </Tiles>
-
-      <TabBar
-        active={tab}
-        tabs={[
-          { key: "members", to: "?tab=members", label: "Members", icon: "👥", count: active.length },
-          { key: "requests", to: "?tab=requests", label: "Requests", icon: "🙋", count: pending.length, alert: true },
-          { key: "attendance", to: "?tab=attendance", label: "Attendance", icon: "✅", count: sessions.length },
+      <Counts
+        items={[
+          { to: `${base}?tab=members`, n: active.length, label: active.length === 1 ? "Member" : "Members", active: tab === "members" },
+          { to: `${base}?tab=requests`, n: pending.length, label: pending.length === 1 ? "Join request" : "Join requests", active: tab === "requests", alert: true },
         ]}
       />
 
@@ -365,6 +371,9 @@ export default function Department({ loaderData, actionData }: Route.ComponentPr
           )}
         </div>
       )}
+      </>
+      )}
+      </div>
     </section>
   );
 }

@@ -2,7 +2,8 @@ import { asc } from "drizzle-orm";
 import { Form, Link, useLocation, useRouteLoaderData, useSearchParams } from "react-router";
 import type { Route } from "./+types/members";
 import type { loader as rootLoader } from "../root";
-import { Chips, PageHead } from "../components/Dash";
+import { PageHead } from "../components/Dash";
+import { Counts } from "../components/Panel";
 import { TITLES } from "../content/member-options";
 import { getDb, schema } from "../db";
 import { YEAR_KEYS } from "../lib/dashboard";
@@ -33,7 +34,6 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     members: members.filter((m) => m.status === "active" || (canSeePending && m.status === "pending")),
     departments: departments.map((d) => ({ id: d.id, nameOm: d.nameOm, nameAm: d.nameAm })),
     canSeePending,
-    canManage: can(user.role, "member:manage"),
   };
 }
 
@@ -44,7 +44,7 @@ export default function Members({ loaderData }: Route.ComponentProps) {
   const lang = root?.lang ?? DEFAULT_LANG;
   const [params] = useSearchParams();
   const location = useLocation();
-  const { members, departments, canSeePending, canManage } = loaderData;
+  const { members, departments, canSeePending } = loaderData;
   const deptIds = departments.map((d) => d.id);
   const f = filterMembers(members, params, deptIds, canSeePending);
   const deptById = new Map(departments.map((d) => [d.id, d]));
@@ -55,77 +55,95 @@ export default function Members({ loaderData }: Route.ComponentProps) {
     return `?${p.toString()}`;
   };
 
+  const counts = f.counts as unknown as { gender: Record<string, number>; year: Record<string, number> };
+  const submitOnChange = (e: React.ChangeEvent<HTMLSelectElement>) => e.currentTarget.form?.requestSubmit();
+
   return (
     <section className="page wide">
-      <PageHead
-        back={{ to: "/dashboard", label: "Dashboard" }}
-        title="Members"
-        actions={
-          <>
-            <a href={`/members.csv${location.search}`} download>⬇ CSV</a>
-            {canManage && <Link to="/admin/members">🎖️ Roles</Link>}
-          </>
-        }
+      <PageHead back={{ to: "/lead", label: "Leadership" }} title="Members" />
+
+      <Counts
+        items={[
+          { to: statusHref("active"), n: f.counts.status.active, label: "Active members", active: f.status === "active" },
+          ...(canSeePending
+            ? [{ to: statusHref("pending"), n: f.counts.status.pending, label: "Waiting for review", active: f.status === "pending", alert: true }]
+            : []),
+        ]}
       />
 
-      <div className="card filter-card">
-        <div className="filter-top">
-          <div className="chips" role="group" aria-label="Status">
-            <Link to={statusHref("active")} className="chip" aria-current={f.status === "active"} preventScrollReset>
-              Active <b>{f.counts.status.active}</b>
-            </Link>
-            {canSeePending && (
-              <Link to={statusHref("pending")} className="chip" aria-current={f.status === "pending"} preventScrollReset>
-                Waiting for review <b>{f.counts.status.pending}</b>
-              </Link>
-            )}
-          </div>
-          <Form method="get" className="list-tools" role="search">
-            {[...params.entries()].filter(([k]) => k !== "q").map(([k, v]) => <input key={k} type="hidden" name={k} value={v} />)}
-            <input type="search" name="q" defaultValue={f.q} placeholder="Search name, ID, phone, @telegram" aria-label="Search members" />
-            <button className="btn btn-quiet btn-sm" aria-label="Search">🔍</button>
-          </Form>
-        </div>
-        <Chips label="Gender" param="gender" value={f.values.gender} counts={f.counts.gender} options={[["male", "Male"], ["female", "Female"]]} />
-        <Chips label="Year" param="year" value={f.values.year} counts={f.counts.year} options={YEAR_KEYS.map((k) => [k, yearLabel(k)] as const)} />
-      </div>
+      <Form method="get" className="card filter-bar" role="search">
+        {f.status === "pending" && <input type="hidden" name="status" value="pending" />}
+        <label className="filter-field filter-search">
+          <span>Search</span>
+          <input type="search" name="q" defaultValue={f.q} placeholder="🔍 Name, student ID, phone, @telegram" />
+        </label>
+        <label className="filter-field">
+          <span>Gender</span>
+          <select name="gender" defaultValue={f.values.gender ?? ""} onChange={submitOnChange}>
+            <option value="">All ({counts.gender.all})</option>
+            <option value="male">Male ({counts.gender.male})</option>
+            <option value="female">Female ({counts.gender.female})</option>
+          </select>
+        </label>
+        <label className="filter-field">
+          <span>Year</span>
+          <select name="year" defaultValue={f.values.year ?? ""} onChange={submitOnChange}>
+            <option value="">All ({counts.year.all})</option>
+            {YEAR_KEYS.map((k) => <option key={k} value={k}>{yearLabel(k)} ({counts.year[k]})</option>)}
+          </select>
+        </label>
+        <button className="btn btn-primary btn-sm">Filter</button>
+      </Form>
 
-      <h2 className="list-title">
-        {f.status === "pending" ? "Waiting for review" : "Active members"} <span className="muted">({f.rows.length})</span>
-        {f.status === "pending" && canSeePending && f.rows.length > 0 && <> · <Link to="/admin/registrations">Review them</Link></>}
-      </h2>
+      <div className="card action-bar">
+        <strong>
+          {f.rows.length} {f.status === "pending" ? "waiting" : f.rows.length === 1 ? "member" : "members"}
+        </strong>
+        <div className="action-bar-buttons">
+          {f.status === "pending" && canSeePending && f.rows.length > 0 && <Link to="/office/registrations" className="btn btn-quiet btn-sm">📝 Review</Link>}
+          <a href={`/members.csv${location.search}`} download className="btn btn-primary btn-sm">⬇ Export</a>
+          <button type="button" className="btn btn-quiet btn-sm" onClick={() => window.print()}>🖨️ Print</button>
+        </div>
+      </div>
 
       {f.rows.length === 0 ? (
         <p className="muted">Nobody matches these filters.</p>
       ) : (
-        <div className="table-wrap">
-          <table className="table-oneline">
-            <thead>
-              <tr><th>Name</th><th>Student ID</th><th>Gender</th><th>Study</th><th>Born</th><th>Phone</th><th>Telegram</th><th>Departments</th></tr>
-            </thead>
-            <tbody>
-              {f.rows.map((m) => (
-                <tr key={m.id}>
-                  <td>
-                    {m.title && m.title in TITLES && <span lang={lang}>{TITLES[m.title as keyof typeof TITLES][lang]} </span>}
-                    <strong>{m.fullName}</strong>
-                    {m.christianName && <span className="muted"> ({m.christianName})</span>}
-                  </td>
-                  <td>{m.studentId}</td>
-                  <td>{m.gender === "male" ? "M" : "F"}</td>
-                  <td>{m.fieldOfStudy} · {formatYear(m.yearOfStudy)}</td>
-                  <td lang={lang}>{formatEc(m.birthDate, lang)}</td>
-                  <td><a href={`tel:${m.phone}`}>{m.phone}</a></td>
-                  <td>{m.telegramUsername ? <a href={`https://t.me/${m.telegramUsername}`} target="_blank" rel="noreferrer">@{m.telegramUsername}</a> : "—"}</td>
-                  <td lang={lang}>
-                    {m.departments.length
-                      ? m.departments.map((id) => { const d = deptById.get(id); return d ? departmentName(d, lang) : id; }).join(", ")
-                      : <span className="muted">—</span>}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="card table-card">
+          <div className="table-wrap">
+            <table className="table-oneline member-table">
+              <thead>
+                <tr><th>Member</th><th>Gender</th><th>Study</th><th>Born</th><th>Phone</th><th>Telegram</th><th>Departments</th></tr>
+              </thead>
+              <tbody>
+                {f.rows.map((m) => (
+                  <tr key={m.id}>
+                    <td>
+                      <span className="who">
+                        <span className="avatar" aria-hidden="true">{m.fullName.trim().charAt(0).toUpperCase()}</span>
+                        <span>
+                          {m.title && m.title in TITLES && <span lang={lang}>{TITLES[m.title as keyof typeof TITLES][lang]} </span>}
+                          <strong>{m.fullName}</strong>
+                          {m.christianName && <span className="muted"> ({m.christianName})</span>}
+                          <span className="who-id">{m.studentId}</span>
+                        </span>
+                      </span>
+                    </td>
+                    <td>{m.gender === "male" ? "M" : "F"}</td>
+                    <td>{m.fieldOfStudy} · {formatYear(m.yearOfStudy)}</td>
+                    <td lang={lang}>{formatEc(m.birthDate, lang)}</td>
+                    <td>{m.phone ? <a href={`tel:${m.phone}`}>{m.phone}</a> : <span className="muted">—</span>}</td>
+                    <td>{m.telegramUsername ? <a href={`https://t.me/${m.telegramUsername}`} target="_blank" rel="noreferrer">@{m.telegramUsername}</a> : "—"}</td>
+                    <td lang={lang}>
+                      {m.departments.length
+                        ? m.departments.map((id) => { const d = deptById.get(id); return d ? departmentName(d, lang) : id; }).join(", ")
+                        : <span className="muted">—</span>}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
     </section>
