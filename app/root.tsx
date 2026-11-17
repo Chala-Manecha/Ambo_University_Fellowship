@@ -68,7 +68,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
           </Link>
           <nav aria-label="Main">
             <NavLink to="/" end>Home</NavLink>
-            {data?.botUrl && !data.isMember && <a href={data.botUrl}>Register</a>}
+            {!data?.isMember && <NavLink to="/register">Register</NavLink>}
             {data?.user && <NavLink to="/departments">Departments</NavLink>}
             {data?.user && <NavLink to="/fasts">Fasts</NavLink>}
             {data?.hasDashboard && <NavLink to="/dashboard">Dashboard</NavLink>}

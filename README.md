@@ -25,20 +25,16 @@ Interface in English; homepage and description text in Afaan Oromoo and Amharic 
 8. Deploy: connect the GitHub repo in Workers → Settings → Builds (build command `npm run build`,
    deploy command `npx wrangler deploy`). Run `npm run db:migrate:remote` after schema changes.
 
-## Telegram bot (registration starts here)
-Every "Register" link opens `t.me/<bot>?start=register`. The bot asks the member to share their
-phone number (Telegram guarantees it's their own), saves it in `telegram_contacts`, then shows a
-**Continue registration** button. That opens `/tg` as a Telegram Mini App, which signs them in from
-Telegram's signed `initData` and sends them to `/register`, where the phone is filled in.
-Admins get a Telegram message for each new registration; members get one when they're approved or rejected.
-
-Setup (once):
-1. `npx wrangler secret put TELEGRAM_WEBHOOK_SECRET`, using a value from `openssl rand -hex 32`.
-2. Deploy and run `npm run db:migrate:remote`.
-3. Signed in as admin, open `/admin/telegram` and press **Connect webhook**.
-
-Code: `app/lib/bot.server.ts` (updates and notifications), `app/content/bot.ts` (texts),
-`app/routes/telegram.webhook.ts`, `app/routes/tg.tsx`.
+## Signing in
+- **Website:** student ID + password (`/login`). The ID matches however it's typed ("ugr/1234/16" = "UGR 1234 16").
+  5 wrong passwords in 15 minutes lock that student ID for 15 minutes. Passwords are PBKDF2 hashes in `account`.
+- **Telegram:** the bot never asks for a phone number. `/start` shows **Open my account**, which opens `/tg` as a
+  Mini App and signs in from Telegram's signed data. A Telegram account seen for the first time is offered
+  "Register" or "Sign in once to link" (student ID + password), so no duplicate accounts are made.
+- After signing in, `/me` sends admins, cafe coordinators and department leaders to `/dashboard`, others to `/account`.
+- Registration (`/register`) works signed out; everyone sets a password. Phone is optional.
+- Forgotten password: an admin presses **Reset password** on `/admin/members` and passes on the temporary password.
+- Bot setup: `TELEGRAM_WEBHOOK_SECRET` secret, then **Connect webhook** on `/admin/telegram`.
 
 ## Departments & attendance
 - 9 departments are created by migration `0002` (names in Afaan Oromoo and Amharic; they follow the language switch).
@@ -59,9 +55,13 @@ Code: `app/lib/bot.server.ts` (updates and notifications), `app/content/bot.ts` 
   picker in `app/components/EcDatePicker.tsx`); the database stores Gregorian `YYYY-MM-DD`.
 - Approved members get a QR code on My account. It's signed with `BETTER_AUTH_SECRET`, so changing that
   secret changes everyone's QR code.
-- Fasts (`/fasts`): admins create a fast (dates + meals), members register, and admins or **Cafe
-  coordinators** (role set on `/admin/members`) scan at the cafe on `/fasts/<id>/scan`. Each member can be
-  served once per meal per day.
+- Fasts (`/fasts`): an admin creates a fast (dates + meals) and prints its **Poster** (`/fasts/<id>/poster`, A4 with a
+  QR to `/fasts/<id>/join`). Members scan it, sign in or register, and choose how they fast: meat only (3 meals),
+  skips breakfast (lunch + dinner) or skips breakfast and lunch (dinner). They get a QR to show at the cafe.
+- The coordinator (admin or **Cafe coordinator** role) sees the fast page: counts per fast type, the registered list
+  (student ID, name, registration date, type) and a **Daily meals** table with ← Prev / Next →, where meals can be
+  ticked by hand. The scanner (`/fasts/<id>/scan`) refuses meals someone fasts from and has a search for people
+  without their QR. Each person is served once per meal per day. Pending members (not yet approved) are served too.
 
 ## Dashboards
 - `/dashboard` (admins, department leaders, cafe coordinators): members by status, gender, year of study,

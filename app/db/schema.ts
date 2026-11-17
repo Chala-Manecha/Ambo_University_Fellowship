@@ -89,8 +89,10 @@ export const members = sqliteTable(
     fullName: text("full_name").notNull(),
     christianName: text("christian_name"),
     gender: text("gender", { enum: ["male", "female"] }).notNull(),
-    phone: text("phone").notNull(),
+    phone: text("phone").notNull(), // "" when the member didn't give one
     studentId: text("student_id").notNull(),
+    // Uppercase letters and digits only, so "ugr/1234/16" and "UGR 1234 16" are the same login
+    studentIdKey: text("student_id_key").unique(),
     fieldOfStudy: text("field_of_study").notNull(),
     yearOfStudy: integer("year_of_study").notNull(),
     contentLanguage: text("content_language", { enum: ["om", "am"] }).notNull(),
@@ -214,6 +216,8 @@ export const fastRegistrations = sqliteTable(
     memberId: text("member_id")
       .notNull()
       .references(() => members.id, { onDelete: "cascade" }),
+    // meat_only = 3 meals, no_breakfast = lunch + dinner, dinner_only = dinner
+    fastType: text("fast_type", { enum: ["meat_only", "no_breakfast", "dinner_only"] }).notNull().default("meat_only"),
     ...timestamps,
   },
   (t) => [primaryKey({ columns: [t.fastId, t.memberId] })],
@@ -238,3 +242,10 @@ export const fastCheckins = sqliteTable(
 );
 
 export type Fast = typeof fasts.$inferSelect;
+
+/** Wrong-password lockout per student ID (see lib/login-limit.ts). */
+export const loginAttempts = sqliteTable("login_attempts", {
+  key: text("key").primaryKey(), // student ID key
+  failures: integer("failures").notNull(),
+  windowStart: integer("window_start").notNull(), // ms
+});

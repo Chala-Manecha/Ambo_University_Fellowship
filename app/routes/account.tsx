@@ -9,6 +9,7 @@ import { renderSVG } from "uqr";
 import { TITLES } from "../content/member-options";
 import { formatEc } from "../lib/ethiopian-date";
 import { memberQrText } from "../lib/member-qr";
+import { getPasswordHash } from "../lib/accounts.server";
 import { requireUser } from "../lib/session.server";
 
 export function meta() {
@@ -26,8 +27,10 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   const url = new URL(request.url);
   const justRegistered = url.searchParams.has("registered");
   const justUpdated = url.searchParams.has("updated");
+  const justPassword = url.searchParams.has("password");
+  const hasPassword = Boolean(await getPasswordHash(db, user.id));
   const position = (await db.query.user.findFirst({ where: eq(schema.user.id, user.id), columns: { position: true } }))?.position ?? null;
-  if (!member) return { user, member: null, justRegistered, justUpdated, position, qrSvg: null, departments: [], attendance: [], rate: attendanceRate([]) };
+  if (!member) return { user, member: null, justRegistered, justUpdated, justPassword, hasPassword, position, qrSvg: null, departments: [], attendance: [], rate: attendanceRate([]) };
 
   // The QR is only issued once the registration is approved
   const qrSvg = member.status === "active" ? renderSVG(await memberQrText(member.id, env.BETTER_AUTH_SECRET), { border: 2 }) : null;
@@ -64,6 +67,8 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     member,
     justRegistered,
     justUpdated,
+    justPassword,
+    hasPassword,
     position,
     qrSvg,
     departments,
@@ -80,7 +85,7 @@ const STATUS_TEXT = {
 } as const;
 
 export default function Account({ loaderData }: Route.ComponentProps) {
-  const { user, member, justRegistered, justUpdated, position, qrSvg, departments, attendance, rate } = loaderData;
+  const { user, member, justRegistered, justUpdated, justPassword, hasPassword, position, qrSvg, departments, attendance, rate } = loaderData;
   const root = useRouteLoaderData<typeof rootLoader>("root");
   const lang = root?.lang ?? DEFAULT_LANG;
   return (
@@ -88,6 +93,7 @@ export default function Account({ loaderData }: Route.ComponentProps) {
       <h1>My account</h1>
       {justRegistered && <p className="notice" role="status">Registration submitted.</p>}
       {justUpdated && <p className="notice" role="status">Details saved.</p>}
+      {justPassword && <p className="notice" role="status">Password saved. You can now sign in on the website with your student ID.</p>}
       <div className="account-id">
         {user.image && <img src={user.image} alt="" width={56} height={56} />}
         <div>
@@ -102,6 +108,12 @@ export default function Account({ loaderData }: Route.ComponentProps) {
       ) : (
         <p>
           You haven't registered as a member yet. <Link to="/register">Register now</Link>
+        </p>
+      )}
+
+      {member && !hasPassword && (
+        <p className="notice">
+          Set a password so you can also sign in on the website with your student ID. <Link to="/account/password">Set password</Link>
         </p>
       )}
 
@@ -131,7 +143,10 @@ export default function Account({ loaderData }: Route.ComponentProps) {
       )}
 
       {member && (
-        <p><Link to="/account/details">Update my details</Link></p>
+        <p className="dash-links">
+          <Link to="/account/details" className="btn btn-quiet btn-sm">✏️ Update my details</Link>
+          <Link to="/account/password" className="btn btn-quiet btn-sm">🔑 Password</Link>
+        </p>
       )}
 
       {member?.status === "active" && (

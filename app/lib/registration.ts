@@ -42,6 +42,11 @@ const optionalText = (max: number) =>
 
 const ISO = /^\d{4}-\d{2}-\d{2}$/;
 
+/** Login key for a student ID: uppercase letters and digits only ("ugr/1234/16" -> "UGR123416"). */
+export function studentIdKey(studentId: string) {
+  return studentId.toUpperCase().replace(/[^A-Z0-9]/g, "");
+}
+
 /** Today's date in Addis Ababa (UTC+3), YYYY-MM-DD. */
 function todayAddis() {
   return new Date(Date.now() + 3 * 3600 * 1000).toISOString().slice(0, 10);

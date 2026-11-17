@@ -59,7 +59,7 @@ export async function action({ request, context }: Route.ActionArgs) {
   // Members register themselves
   const fastId = String(form.get("fastId") ?? "");
   const member = await getMemberByUser(db, user.id);
-  if (!member || member.status !== "active") return { error: "Only approved members can register for a fast." };
+  if (!member || (member.status !== "active" && member.status !== "pending")) return { error: "Only members can register for a fast." };
   const fast = await db.query.fasts.findFirst({ where: eq(schema.fasts.id, fastId) });
   if (!fast || fast.endDate < todayInAddis()) return { error: "This fast has ended." };
 
@@ -92,7 +92,7 @@ export default function Fasts({ loaderData, actionData }: Route.ComponentProps) 
       <p className="muted">Register for a fast to get cafe meals. Show the QR code on My account when you eat.</p>
       {message && <p className="notice" role="status">{message}</p>}
       {error && <p className="form-error" role="alert">{error}</p>}
-      {memberStatus !== "active" && !canManage && (
+      {memberStatus !== "active" && memberStatus !== "pending" && !canManage && (
         <p className="muted">You can register for fasts once your membership is approved.</p>
       )}
 
@@ -113,19 +113,16 @@ export default function Fasts({ loaderData, actionData }: Route.ComponentProps) 
                 </p>
               </div>
               <div className="dept-card-actions">
-                {memberStatus === "active" && (
-                  <Form method="post">
-                    <input type="hidden" name="fastId" value={f.id} />
-                    {f.registered ? (
-                      <>
-                        <span className="pill pill-active">Registered</span>{" "}
-                        <button name="intent" value="unregister" className="btn btn-quiet btn-sm" disabled={busy}>Cancel</button>
-                      </>
-                    ) : (
-                      <button name="intent" value="register" className="btn btn-primary btn-sm" disabled={busy}>Register</button>
-                    )}
-                  </Form>
-                )}
+                {(memberStatus === "active" || memberStatus === "pending") &&
+                  (f.registered ? (
+                    <Form method="post">
+                      <input type="hidden" name="fastId" value={f.id} />
+                      <Link to={`/fasts/${f.id}/join`} className="pill pill-active">Registered · QR</Link>{" "}
+                      <button name="intent" value="unregister" className="btn btn-quiet btn-sm" disabled={busy}>Cancel</button>
+                    </Form>
+                  ) : (
+                    <Link to={`/fasts/${f.id}/join`} className="btn btn-primary btn-sm">Register</Link>
+                  ))}
                 {canScan && <Link to={`/fasts/${f.id}`} className="btn btn-quiet btn-sm">Manage</Link>}
                 {canScan && f.isOn && <Link to={`/fasts/${f.id}/scan`} className="btn btn-primary btn-sm">Scan</Link>}
               </div>

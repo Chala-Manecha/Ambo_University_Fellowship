@@ -49,3 +49,21 @@ export function safeRedirect(to: FormDataEntryValue | string | null, fallback = 
   }
   return to;
 }
+
+/**
+ * Signs in with student ID + password from a route action. Returns the Set-Cookie headers,
+ * or an error: "locked" after too many wrong passwords, otherwise "bad_credentials".
+ */
+export async function signInWithStudentId(request: Request, env: Env, studentId: string, password: string) {
+  const res = await createAuth(env).api.studentLogin({
+    body: { studentId, password },
+    headers: request.headers,
+    asResponse: true,
+  });
+  if (!res.ok) return { error: res.status === 429 ? ("locked" as const) : ("bad_credentials" as const) };
+  const headers = new Headers();
+  for (const cookie of res.headers.getSetCookie()) headers.append("Set-Cookie", cookie);
+  return { headers };
+}
+
+export { HOME_AFTER_LOGIN } from "./paths";

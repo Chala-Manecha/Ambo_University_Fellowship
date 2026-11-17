@@ -6,43 +6,50 @@ import type { loader as rootLoader } from "../root";
 import { MemberDetailsFields } from "../components/MemberDetailsFields";
 import { Turnstile } from "../components/Turnstile";
 import { FORM_TEXT } from "../content/member-options";
-import { botLink } from "../content/bot";
 import { HOME } from "../content/site";
 import { getDb, schema, type Db } from "../db";
 import { notifyAdmins } from "../lib/bot.server";
 import { DEFAULT_LANG } from "../lib/lang";
 import { departmentName, todayInAddis } from "../lib/departments";
-import { formatYear, formToObject, GRADUATED, registrationFormSchema } from "../lib/registration";
-import { requireUser } from "../lib/session.server";
+import { ethiopianPhone, formatYear, formToObject, GRADUATED, registrationFormSchema, studentIdKey } from "../lib/registration";
+import { createWebUser, setPasswordHash } from "../lib/accounts.server";
+import { hashPassword, passwordSchema } from "../lib/password";
+import { getUser, safeRedirect, signInWithStudentId } from "../lib/session.server";
+import { z } from "zod";
 import { verifyTurnstile } from "../lib/turnstile.server";
 
 export function meta() {
   return [{ title: "Register · Gibi Gubae" }];
 }
 
-/** The phone number this Telegram account shared with the bot, if any. */
-async function verifiedPhone(db: Db, telegramId: string | null) {
-  if (!telegramId) return null;
+/** A phone number the person shared with the bot earlier, used to prefill the form. */
+async function sharedPhone(db: Db, telegramId: string | null) {
+  if (!telegramId) return "";
   const contact = await db.query.telegramContacts.findFirst({
     where: eq(schema.telegramContacts.telegramId, telegramId),
     columns: { phone: true },
   });
-  return contact?.phone ?? null;
+  return contact?.phone ?? "";
 }
 
+/**
+ * Registration works signed out (website) or signed in (opened from the bot).
+ * Everyone sets a password, so they can sign in on the website with student ID + password.
+ */
 export async function loader({ request, context }: Route.LoaderArgs) {
   const { env } = context.cloudflare;
-  const user = await requireUser(request, env);
+  const user = await getUser(request, env);
   const db = getDb(env.DB);
-  const existing = await db.query.members.findFirst({
-    where: eq(schema.members.userId, user.id),
-    columns: { status: true },
-  });
-  if (existing) throw redirect("/account");
+  const next = safeRedirect(new URL(request.url).searchParams.get("next"), "/account");
+  if (user) {
+    const existing = await db.query.members.findFirst({ where: eq(schema.members.userId, user.id), columns: { status: true } });
+    if (existing) throw redirect(next);
+  }
   return {
-    userName: user.name,
-    phone: await verifiedPhone(db, user.telegramId),
-    botUrl: botLink(env.TELEGRAM_BOT_USERNAME),
+    signedIn: Boolean(user),
+    userName: user?.name ?? "",
+    phone: await sharedPhone(db, user?.telegramId ?? null),
+    next,
     turnstileSiteKey: env.TURNSTILE_SITE_KEY,
     today: todayInAddis(),
     departments: await db.query.departments.findMany({ orderBy: asc(schema.departments.sortOrder) }),
@@ -51,16 +58,20 @@ export async function loader({ request, context }: Route.LoaderArgs) {
 
 type FieldErrors = Partial<Record<string, string>>;
 
+const extraSchema = z
+  .object({
+    phone: z.preprocess((v) => (typeof v === "string" && v.trim() === "" ? undefined : v), ethiopianPhone.optional()),
+    password: passwordSchema,
+    password2: z.string(),
+  })
+  .refine((d) => d.password === d.password2, { message: "The two passwords don't match", path: ["password2"] });
+
 export async function action({ request, context }: Route.ActionArgs) {
   const { env, ctx } = context.cloudflare;
-  const user = await requireUser(request, env);
+  const user = await getUser(request, env);
   const form = await request.formData();
   const db = getDb(env.DB);
-
-  const phone = await verifiedPhone(db, user.telegramId);
-  if (!phone) {
-    return { formError: "Share your phone number with the fellowship bot first.", fieldErrors: {} as FieldErrors };
-  }
+  const next = safeRedirect(form.get("next"), "/account");
 
   const human = await verifyTurnstile(
     form.get("cf-turnstile-response"),
@@ -71,49 +82,65 @@ export async function action({ request, context }: Route.ActionArgs) {
     return { formError: "The security check didn't pass. Complete it and submit again.", fieldErrors: {} as FieldErrors };
   }
 
-  const parsed = registrationFormSchema.safeParse(formToObject(form));
-  if (!parsed.success) {
+  const obj = formToObject(form);
+  const parsed = registrationFormSchema.safeParse(obj);
+  const extra = extraSchema.safeParse(obj);
+  if (!parsed.success || !extra.success) {
     const fieldErrors: FieldErrors = {};
-    for (const issue of parsed.error.issues) {
-      const key = String(issue.path[0]);
-      fieldErrors[key] ??= issue.message;
+    for (const issue of [...(parsed.error?.issues ?? []), ...(extra.error?.issues ?? [])]) {
+      fieldErrors[String(issue.path[0])] ??= issue.message;
     }
     return { formError: "Fix the highlighted fields.", fieldErrors };
   }
 
-  // userId is UNIQUE: a second submission from the same login is ignored
+  const key = studentIdKey(parsed.data.studentId);
+  if (await db.query.members.findFirst({ where: eq(schema.members.studentIdKey, key), columns: { id: true } })) {
+    return { formError: "This student ID is already registered. Sign in instead.", fieldErrors: { studentId: "Already registered" } as FieldErrors };
+  }
+  if (user && (await db.query.members.findFirst({ where: eq(schema.members.userId, user.id), columns: { id: true } }))) {
+    throw redirect(next);
+  }
+
+  const userId = user?.id ?? (await createWebUser(db, parsed.data.fullName));
   const { departments: chosen, ...memberData } = parsed.data;
-  const inserted = await db
-    .insert(schema.members)
-    .values({ ...memberData, phone, userId: user.id })
-    .onConflictDoNothing({ target: schema.members.userId })
-    .returning({ id: schema.members.id });
+  let memberId: string;
+  try {
+    const [row] = await db
+      .insert(schema.members)
+      .values({ ...memberData, studentIdKey: key, phone: extra.data.phone ?? "", userId })
+      .returning({ id: schema.members.id });
+    memberId = row.id;
+  } catch {
+    // The unique student ID key is the final guard against two people registering the same ID at once
+    return { formError: "This student ID is already registered. Sign in instead.", fieldErrors: { studentId: "Already registered" } as FieldErrors };
+  }
+  await setPasswordHash(db, userId, await hashPassword(extra.data.password));
 
   // Departments chosen on the form become join requests; leaders see them once the registration is approved
-  if (inserted.length > 0 && chosen.length > 0) {
-    const valid = await db
-      .select({ id: schema.departments.id })
-      .from(schema.departments)
-      .where(inArray(schema.departments.id, chosen));
+  if (chosen.length > 0) {
+    const valid = await db.select({ id: schema.departments.id }).from(schema.departments).where(inArray(schema.departments.id, chosen));
     if (valid.length > 0) {
       await db
         .insert(schema.departmentMembers)
-        .values(valid.map((d) => ({ departmentId: d.id, memberId: inserted[0].id })))
+        .values(valid.map((d) => ({ departmentId: d.id, memberId })))
         .onConflictDoNothing();
     }
   }
 
-  if (inserted.length > 0) {
-    const d = parsed.data;
-    ctx.waitUntil(
-      notifyAdmins(
-        env,
-        `New registration: ${d.fullName} (${d.fieldOfStudy}, ${formatYear(d.yearOfStudy)}).\nReview: ${env.PUBLIC_SITE_URL}/admin/registrations`,
-      ),
-    );
-  }
+  const d = parsed.data;
+  ctx.waitUntil(
+    notifyAdmins(
+      env,
+      `New registration: ${d.fullName} (${d.fieldOfStudy}, ${formatYear(d.yearOfStudy)}).\nReview: ${env.PUBLIC_SITE_URL}/admin/registrations`,
+    ),
+  );
 
-  throw redirect("/account?registered=1");
+  const dest = next === "/account" ? "/account?registered=1" : next;
+  if (user) throw redirect(dest);
+  // Signed out: sign them in with what they just chose
+  const signedIn = await signInWithStudentId(request, env, d.studentId, extra.data.password);
+  if ("error" in signedIn) throw redirect("/login");
+  throw redirect(dest, { headers: signedIn.headers });
 }
 
 export default function Register({ loaderData, actionData }: Route.ComponentProps) {
@@ -129,20 +156,6 @@ export default function Register({ loaderData, actionData }: Route.ComponentProp
     if (actionData) setWidgetKey((k) => k + 1);
   }, [actionData]);
 
-  // Registration starts in the bot, which collects a verified phone number.
-  if (!loaderData.phone) {
-    return (
-      <section className="page narrow">
-        <h1>Member registration</h1>
-        <p>
-          Registration starts in Telegram. Open the fellowship bot, share your phone number, then tap{" "}
-          <strong>Continue registration</strong>.
-        </p>
-        <a className="btn btn-primary" href={loaderData.botUrl}>Open the bot</a>
-      </section>
-    );
-  }
-
   return (
     <section className="page narrow">
       <h1>Member registration</h1>
@@ -152,7 +165,12 @@ export default function Register({ loaderData, actionData }: Route.ComponentProp
         <p className="form-error" role="alert">{actionData.formError}</p>
       )}
 
+      {!loaderData.signedIn && (
+        <p className="muted">Already registered? <Link to={`/login?next=${encodeURIComponent(loaderData.next)}`}>Sign in</Link></p>
+      )}
+
       <Form method="post" className="form" noValidate>
+        <input type="hidden" name="next" value={loaderData.next} />
         <Field label="Full name" name="fullName" error={errors.fullName} defaultValue={loaderData.userName} required autoComplete="name" />
         <Field label="Christian name" name="christianName" error={errors.christianName} hint="Optional" />
 
@@ -165,11 +183,8 @@ export default function Register({ loaderData, actionData }: Route.ComponentProp
           {errors.gender && <span className="field-error">{errors.gender}</span>}
         </fieldset>
 
-        <div className="field">
-          <span>Phone <small>Shared from Telegram</small></span>
-          <p className="readonly">{loaderData.phone}</p>
-        </div>
-        <Field label="Student ID" name="studentId" error={errors.studentId} required />
+        <Field label="Student ID" name="studentId" error={errors.studentId} required autoCapitalize="characters" placeholder="UGR/1234/16" hint="You'll sign in with this" />
+        <Field label="Phone" name="phone" type="tel" inputMode="tel" placeholder="09XX XXX XXX" error={errors.phone} hint="Optional" autoComplete="tel" defaultValue={loaderData.phone} />
         <Field label="Field of study" name="fieldOfStudy" error={errors.fieldOfStudy} required />
 
         <label className="field">
@@ -211,6 +226,13 @@ export default function Register({ loaderData, actionData }: Route.ComponentProp
           <span>Anything we should know? <small>Optional</small></span>
           <textarea name="note" rows={3} maxLength={500} />
         </label>
+
+        <fieldset className="field">
+          <legend>Password for the website</legend>
+          <p className="field-hint">You'll sign in with your student ID and this password. At least 8 characters.</p>
+          <Field label="Password" name="password" type="password" error={errors.password} required minLength={8} autoComplete="new-password" />
+          <Field label="Repeat password" name="password2" type="password" error={errors.password2} required minLength={8} autoComplete="new-password" />
+        </fieldset>
 
         <Turnstile key={widgetKey} siteKey={loaderData.turnstileSiteKey} />
 

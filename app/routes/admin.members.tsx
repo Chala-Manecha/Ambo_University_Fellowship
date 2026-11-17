@@ -7,7 +7,15 @@ import { isPosition, POSITION_LABELS, POSITIONS } from "../lib/departments";
 import { DEFAULT_LANG } from "../lib/lang";
 import { isRole, ROLES } from "../lib/permissions";
 import { formatYear } from "../lib/registration";
+import { clearLoginFailures, setPasswordHash } from "../lib/accounts.server";
+import { hashPassword } from "../lib/password";
 import { requirePermission } from "../lib/session.server";
+
+/** 10 characters without look-alikes (0/O, 1/l/I). */
+function temporaryPassword() {
+  const alphabet = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  return Array.from(crypto.getRandomValues(new Uint8Array(10)), (b) => alphabet[b % alphabet.length]).join("");
+}
 
 export function meta() {
   return [{ title: "Members · Gibi Gubae" }];
@@ -41,6 +49,18 @@ export async function action({ request, context }: Route.ActionArgs) {
   const me = await requirePermission(request, env, "member:manage");
   const form = await request.formData();
   const userId = String(form.get("userId") ?? "");
+
+  if (form.get("intent") === "reset-password") {
+    // A temporary password the admin passes on; the member changes it on My account
+    const db = getDb(env.DB);
+    const member = await db.query.members.findFirst({ where: eq(schema.members.userId, userId), columns: { fullName: true, studentIdKey: true } });
+    if (!member) throw new Response("Member not found", { status: 404 });
+    const temp = temporaryPassword();
+    await setPasswordHash(db, userId, await hashPassword(temp));
+    if (member.studentIdKey) await clearLoginFailures(db, member.studentIdKey);
+    return { message: `Temporary password for ${member.fullName}: ${temp} — give it to them privately; they can change it on My account.` };
+  }
+
   const role = form.get("role");
   const positionRaw = form.get("position");
   const position = positionRaw === "" ? null : positionRaw;
@@ -105,6 +125,17 @@ export default function Members({ loaderData, actionData }: Route.ComponentProps
                       {POSITIONS.map((p) => <option key={p} value={p} lang={lang}>{POSITION_LABELS[p][lang]}</option>)}
                     </select>
                     <button className="btn btn-quiet btn-sm" disabled={nav.state !== "idle"}>Save</button>
+                  </Form>
+                  <Form
+                    method="post"
+                    className="row-actions"
+                    onSubmit={(e) => {
+                      if (!window.confirm(`Give ${m.fullName} a new temporary password? Their old password stops working.`)) e.preventDefault();
+                    }}
+                  >
+                    <input type="hidden" name="intent" value="reset-password" />
+                    <input type="hidden" name="userId" value={m.userId} />
+                    <button className="btn btn-quiet btn-sm" disabled={nav.state !== "idle"} title="Reset password">🔑 Reset password</button>
                   </Form>
                 </td>
               </tr>

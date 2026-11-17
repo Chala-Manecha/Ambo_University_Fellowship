@@ -373,3 +373,52 @@ h2 { margin-top: 2rem; }
 .table-oneline td, .table-oneline th { white-space: nowrap; }
 .table-oneline td { padding-top: 0.45rem; padding-bottom: 0.45rem; }
 .dash-me { text-align: right; }
+.scan-search { margin-top: 1rem; }
+.scan-matches { list-style: none; padding: 0; margin: 0.5rem 0; display: grid; gap: 0.4rem; }
+.scan-matches .btn { width: 100%; justify-content: flex-start; text-align: left; display: flex; gap: 0.5rem; }
+
+/* ---------- Fast poster (prints on one A4 page) ---------- */
+.poster { max-width: 42rem; margin: 0 auto; padding: 2rem 1.5rem; text-align: center; }
+.poster-org { margin: 0; font-family: var(--font-display); font-weight: 700; color: var(--lapis); font-size: 1.15rem; }
+.poster-title { font-size: 2.6rem; margin: 1rem 0 0.25rem; }
+.poster-dates { font-size: 1.2rem; margin: 0 0 1rem; }
+.poster-qr { width: min(80vw, 22rem); margin: 0 auto; background: #fff; padding: 0.5rem; border-radius: 8px; }
+.poster-qr svg { display: block; width: 100%; height: auto; }
+.poster-cta { font-size: 1.25rem; font-weight: 600; margin: 0.75rem 0 0; }
+.poster-types { list-style: none; padding: 0; margin: 1.25rem 0; display: grid; gap: 0.35rem; font-size: 1rem; }
+.poster-url { font-size: 0.8rem; color: var(--stone); word-break: break-all; }
+@media print {
+  @page { size: A4; margin: 12mm; }
+  .site-header, .site-footer, .no-print { display: none !important; }
+  body { background: #fff; color: #000; }
+  .poster { padding: 0; }
+  .poster-qr { width: 11cm; }
+}
+
+/* ---------- Fast type choice ---------- */
+.fast-types { display: grid; gap: 0.6rem; }
+.fast-type { position: relative; display: block; cursor: pointer; }
+.fast-type input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
+.fast-type-body { display: grid; gap: 0.4rem; border: 2px solid var(--line); border-radius: 12px; padding: 0.8rem 1rem; background: var(--surface); }
+.fast-type input:checked + .fast-type-body { border-color: var(--green); background: color-mix(in srgb, var(--green) 9%, var(--surface)); }
+.fast-type input:focus-visible + .fast-type-body { outline: 3px solid var(--gold); outline-offset: 2px; }
+.fast-type-meals { display: flex; gap: 0.35rem; flex-wrap: wrap; }
+.fast-type-meals span { font-size: 0.8rem; padding: 0.1rem 0.55rem; border-radius: 999px; border: 1px solid var(--line); }
+.fast-type-meals .meal-on { background: var(--green); border-color: var(--green); color: #fff; }
+.fast-type-meals .meal-off { text-decoration: line-through; color: var(--stone); }
+
+/* ---------- Fast daily meals ---------- */
+.day-nav { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; margin: 0.5rem 0 1rem; }
+.day-nav-label { display: grid; text-align: center; }
+.day-nav [aria-disabled="true"] { opacity: 0.4; pointer-events: none; }
+.meal-table .meal-col { text-align: center; width: 5.5rem; }
+.meal-skip { color: var(--stone); }
+.meal-cell { width: 2.4rem; height: 2.4rem; border-radius: 10px; border: 2px solid var(--line); background: var(--surface); color: #fff;
+  font: inherit; font-size: 1.2rem; font-weight: 700; cursor: pointer; line-height: 1; }
+.meal-cell:hover { border-color: var(--green); }
+.meal-cell.is-eaten { background: var(--green); border-color: var(--green); }
+.add-panel { margin: 0 0 1rem; }
+.add-panel > summary { list-style: none; cursor: pointer; display: inline-flex; align-items: center; gap: 0.5rem; background: var(--surface);
+  color: var(--bar-1); border: 1.5px dashed var(--bar-2); border-radius: 12px; padding: 0.55rem 1rem; font-weight: 700; }
+.add-panel > summary::-webkit-details-marker { display: none; }
+.add-panel[open] > summary { background: var(--bar-1); color: #fff; border-style: solid; border-color: var(--bar-1); }

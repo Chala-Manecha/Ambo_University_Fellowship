@@ -2,7 +2,19 @@ import type { BetterAuthPlugin, User } from "better-auth";
 import { APIError, createAuthEndpoint } from "better-auth/api";
 import { setSessionCookie } from "better-auth/cookies";
 import { z } from "zod";
-import { verifyTelegramLogin, verifyWebAppInitData, type TelegramLoginData } from "./telegram-verify";
+import type { Db } from "../db";
+import {
+  clearLoginFailures,
+  getPasswordHash,
+  linkTelegram,
+  loginLocked,
+  memberByStudentId,
+  recordLoginFailure,
+  userIdForTelegram,
+} from "./accounts.server";
+import { verifyPassword } from "./password";
+import { studentIdKey } from "./registration";
+import { verifyTelegramLogin, verifyWebAppInitData, type TelegramLoginData, type WebAppUser } from "./telegram-verify";
 
 // looseObject: every field Telegram sends is part of the signature, so unknown
 // fields must be kept, not stripped.
@@ -16,7 +28,9 @@ const telegramBody = z.looseObject({
   hash: z.string().regex(/^[a-f0-9]{64}$/i),
 });
 
-const webAppBody = z.object({ initData: z.string().min(1).max(4096) });
+const webAppBody = z.object({ initData: z.string().min(1).max(4096), create: z.boolean().optional() });
+const studentLoginBody = z.object({ studentId: z.string().min(1).max(40), password: z.string().min(1).max(128) });
+const linkBody = studentLoginBody.extend({ initData: z.string().min(1).max(4096) });
 
 const devBody = z.object({
   telegramId: z.coerce.number().int().positive(),
@@ -26,6 +40,39 @@ const devBody = z.object({
 const PROVIDER = "telegram";
 
 type TgProfile = { id: number; name: string; username?: string; photoUrl?: string };
+
+async function startSession(ctx: any, userId: string) {
+  const adapter = ctx.context.internalAdapter;
+  const user = await adapter.findUserById(userId);
+  if (!user) throw new APIError("UNAUTHORIZED", { message: "Account not found." });
+  const session = await adapter.createSession(user.id);
+  if (!session) throw new APIError("INTERNAL_SERVER_ERROR", { message: "Could not create session" });
+  await setSessionCookie(ctx, { session, user });
+  return ctx.json({ ok: true });
+}
+
+/**
+ * Student ID + password. 5 wrong passwords in 15 minutes locks that student ID for 15 minutes.
+ * Returns the user id, or throws.
+ */
+async function checkStudentPassword(db: Db, studentId: string, password: string) {
+  const key = studentIdKey(studentId);
+  const now = Date.now();
+  if (!key) throw new APIError("UNAUTHORIZED", { message: "bad_credentials" });
+  if (await loginLocked(db, key, now)) throw new APIError("TOO_MANY_REQUESTS", { message: "locked" });
+  const member = await memberByStudentId(db, studentId);
+  const ok = member ? await verifyPassword(password, await getPasswordHash(db, member.userId)) : false;
+  if (!ok || !member) {
+    await recordLoginFailure(db, key, now);
+    throw new APIError("UNAUTHORIZED", { message: "bad_credentials" });
+  }
+  await clearLoginFailures(db, key);
+  return member.userId;
+}
+
+function profileOf(u: WebAppUser): TgProfile {
+  return { id: u.id, name: [u.first_name, u.last_name].filter(Boolean).join(" "), username: u.username, photoUrl: u.photo_url };
+}
 
 async function signInTelegramUser(ctx: any, tg: TgProfile) {
   const adapter = ctx.context.internalAdapter;
@@ -63,7 +110,7 @@ async function signInTelegramUser(ctx: any, tg: TgProfile) {
   return ctx.json({ ok: true });
 }
 
-export function telegram(opts: { botToken: string }) {
+export function telegram(opts: { botToken: string; db: Db }) {
   return {
     id: "telegram",
     endpoints: {
@@ -99,15 +146,30 @@ export function telegram(opts: { botToken: string }) {
               message: result.reason === "expired" ? "This link expired. Open the bot again." : "Telegram sign-in could not be verified.",
             });
           }
-          const u = result.user;
-          return signInTelegramUser(ctx, {
-            id: u.id,
-            name: [u.first_name, u.last_name].filter(Boolean).join(" "),
-            username: u.username,
-            photoUrl: u.photo_url,
-          });
+          // A Telegram account we don't know yet: ask first whether they already have a website
+          // account (link it) or are new (create), instead of making a duplicate account.
+          if (!ctx.body.create && !(await userIdForTelegram(opts.db, result.user.id))) {
+            return ctx.json({ ok: false, unlinked: true });
+          }
+          return signInTelegramUser(ctx, profileOf(result.user));
         },
       ),
+
+      // Website sign-in with student ID + password
+      studentLogin: createAuthEndpoint("/sign-in/student", { method: "POST", body: studentLoginBody }, async (ctx) => {
+        const userId = await checkStudentPassword(opts.db, ctx.body.studentId, ctx.body.password);
+        return startSession(ctx, userId);
+      }),
+
+      // Mini App, first time: tie this Telegram account to the member's website account
+      telegramLink: createAuthEndpoint("/sign-in/telegram-link", { method: "POST", body: linkBody }, async (ctx) => {
+        const result = await verifyWebAppInitData(ctx.body.initData, opts.botToken, Date.now());
+        if (!result.ok) throw new APIError("UNAUTHORIZED", { message: "Telegram sign-in could not be verified." });
+        const userId = await checkStudentPassword(opts.db, ctx.body.studentId, ctx.body.password);
+        const err = await linkTelegram(opts.db, userId, profileOf(result.user));
+        if (err) throw new APIError("CONFLICT", { message: err });
+        return startSession(ctx, userId);
+      }),
 
       // Telegram's widget does not run on localhost. This endpoint exists only in
       // `npm run dev`: import.meta.env.DEV is replaced with `false` in production builds.

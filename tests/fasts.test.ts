@@ -68,3 +68,30 @@ describe("cafe rules", () => {
     expect(roleAfterLeadershipChange("cafe", true)).toBe("cafe");
   });
 });
+
+import { fastDays, FAST_TYPE_MEALS, mealsFor, pickFastDay } from "../app/lib/fasts";
+
+describe("fast types", () => {
+  it("gives each type its meals", () => {
+    expect(FAST_TYPE_MEALS.meat_only).toEqual(["breakfast", "lunch", "dinner"]);
+    expect(mealsFor(["breakfast", "lunch", "dinner"], "no_breakfast")).toEqual(["lunch", "dinner"]);
+    expect(mealsFor(["lunch", "dinner"], "dinner_only")).toEqual(["dinner"]);
+  });
+
+  it("refuses a meal the student fasts from", () => {
+    const ok = { memberFound: true, memberActive: true, registered: true, fastIsOn: true, mealAllowed: true };
+    expect(checkinDecision({ ...ok, fastType: "no_breakfast", meal: "breakfast" })).toEqual({ kind: "skips_meal", fastType: "no_breakfast" });
+    expect(checkinDecision({ ...ok, fastType: "dinner_only", meal: "lunch" })?.kind).toBe("skips_meal");
+    expect(checkinDecision({ ...ok, fastType: "dinner_only", meal: "dinner" })).toBeNull();
+    expect(checkinDecision({ ...ok, fastType: "meat_only", meal: "breakfast" })).toBeNull();
+  });
+
+  it("lists the fast's days and keeps the daily table inside them", () => {
+    const f = { startDate: "2026-11-24", endDate: "2026-11-27" };
+    expect(fastDays(f.startDate, f.endDate)).toEqual(["2026-11-24", "2026-11-25", "2026-11-26", "2026-11-27"]);
+    expect(pickFastDay(f, "2026-11-25", "2026-11-26")).toBe("2026-11-25");
+    expect(pickFastDay(f, "2026-12-30", "2026-11-26")).toBe("2026-11-26");
+    expect(pickFastDay(f, null, "2026-11-17")).toBe("2026-11-24");
+    expect(pickFastDay(f, "bad", "2027-02-01")).toBe("2026-11-27");
+  });
+});

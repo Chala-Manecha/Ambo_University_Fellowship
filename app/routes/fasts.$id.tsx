@@ -1,11 +1,26 @@
-import { and, asc, count, eq } from "drizzle-orm";
-import { Form, Link, redirect, useNavigation, useRouteLoaderData } from "react-router";
+import { and, eq } from "drizzle-orm";
+import { Form, Link, redirect, useNavigation, useRouteLoaderData, useSearchParams } from "react-router";
 import type { Route } from "./+types/fasts.$id";
 import type { loader as rootLoader } from "../root";
+import { Chips, PageHead, TabBar, Tile, Tiles } from "../components/Dash";
 import { getDb, schema } from "../db";
+import { countBy, matchesSearch, pickParam } from "../lib/dashboard";
 import { todayInAddis } from "../lib/departments";
+import { memberByStudentId } from "../lib/accounts.server";
 import { formatEc } from "../lib/ethiopian-date";
-import { isFastOn, MEAL_LABELS } from "../lib/fasts";
+import {
+  FAST_TYPE_LABELS,
+  FAST_TYPES,
+  fastDays,
+  isFastOn,
+  isFastType,
+  isMeal,
+  MEAL_LABELS,
+  mealsFor,
+  pickFastDay,
+  type Meal,
+} from "../lib/fasts";
+import { checkIn, loadRegistrants } from "../lib/fasts.server";
 import { DEFAULT_LANG } from "../lib/lang";
 import { can } from "../lib/permissions";
 import { requirePermission } from "../lib/session.server";
@@ -21,58 +36,84 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
   const fast = await db.query.fasts.findFirst({ where: eq(schema.fasts.id, params.id) });
   if (!fast) throw new Response("Fast not found", { status: 404 });
   const today = todayInAddis();
+  const day = pickFastDay(fast, new URL(request.url).searchParams.get("day"), today);
+  const days = fastDays(fast.startDate, fast.endDate);
+  const i = days.indexOf(day);
 
-  const registrants = await db
-    .select({
-      memberId: schema.members.id,
-      fullName: schema.members.fullName,
-      studentId: schema.members.studentId,
-      phone: schema.members.phone,
-    })
-    .from(schema.fastRegistrations)
-    .innerJoin(schema.members, eq(schema.members.id, schema.fastRegistrations.memberId))
-    .where(eq(schema.fastRegistrations.fastId, fast.id))
-    .orderBy(asc(schema.members.fullName));
-
-  const perMember = await db
-    .select({ memberId: schema.fastCheckins.memberId, n: count() })
+  const registrants = await loadRegistrants(db, fast.id);
+  const eaten = await db
+    .select({ memberId: schema.fastCheckins.memberId, meal: schema.fastCheckins.meal })
     .from(schema.fastCheckins)
-    .where(eq(schema.fastCheckins.fastId, fast.id))
-    .groupBy(schema.fastCheckins.memberId);
-  const todayByMeal = await db
-    .select({ meal: schema.fastCheckins.meal, n: count() })
-    .from(schema.fastCheckins)
-    .where(and(eq(schema.fastCheckins.fastId, fast.id), eq(schema.fastCheckins.date, today)))
-    .groupBy(schema.fastCheckins.meal);
+    .where(and(eq(schema.fastCheckins.fastId, fast.id), eq(schema.fastCheckins.date, day)));
+  const eatenSet = new Set(eaten.map((e) => `${e.memberId}:${e.meal}`));
 
-  const meals = new Map(perMember.map((p) => [p.memberId, p.n]));
   return {
     fast,
     isOn: isFastOn(fast, today),
+    today,
+    day,
+    prevDay: i > 0 ? days[i - 1] : null,
+    nextDay: i >= 0 && i < days.length - 1 ? days[i + 1] : null,
+    dayNumber: i + 1,
+    totalDays: days.length,
     canManage: can(user.role, "fast:manage"),
-    today: fast.meals.map((m) => ({ meal: m, n: todayByMeal.find((t) => t.meal === m)?.n ?? 0 })),
-    registrants: registrants.map((r) => ({ ...r, meals: meals.get(r.memberId) ?? 0 })),
+    registrants: registrants.map((r) => ({
+      ...r,
+      registeredAt: r.registeredAt.getTime(),
+      meals: Object.fromEntries(
+        fast.meals.map((m) => [m, mealsFor(fast.meals, r.fastType).includes(m) ? eatenSet.has(`${r.memberId}:${m}`) : null]),
+      ) as Partial<Record<Meal, boolean | null>>, // true eaten, false not yet, null fasting from it
+    })),
   };
 }
 
 export async function action({ request, params, context }: Route.ActionArgs) {
   const { env } = context.cloudflare;
-  await requirePermission(request, env, "fast:manage");
+  const user = await requirePermission(request, env, "fast:scan");
   const db = getDb(env.DB);
   const fast = await db.query.fasts.findFirst({ where: eq(schema.fasts.id, params.id) });
   if (!fast) throw new Response("Fast not found", { status: 404 });
   const form = await request.formData();
   const intent = form.get("intent");
 
+  // Daily table: tick or untick one meal for one person on one day
+  if (intent === "mark" || intent === "unmark") {
+    const memberId = String(form.get("memberId") ?? "");
+    const meal = form.get("meal");
+    const day = pickFastDay(fast, String(form.get("day") ?? ""), "");
+    if (!isMeal(meal) || day !== form.get("day")) return { message: "That day isn't part of this fast." };
+    if (intent === "unmark") {
+      await db
+        .delete(schema.fastCheckins)
+        .where(
+          and(
+            eq(schema.fastCheckins.fastId, fast.id),
+            eq(schema.fastCheckins.memberId, memberId),
+            eq(schema.fastCheckins.date, day),
+            eq(schema.fastCheckins.meal, meal),
+          ),
+        );
+      return null;
+    }
+    const r = await checkIn(db, fast, memberId, meal, user.id, day);
+    return r.kind === "ok" || r.kind === "already" ? null : { message: `Not recorded: ${r.kind.replace("_", " ")}.` };
+  }
+
+  if (!can(user.role, "fast:manage")) throw new Response("Only admins can change registrations.", { status: 403 });
+
   if (intent === "add") {
-    // Admins can register someone who can't do it themselves
     const studentId = String(form.get("studentId") ?? "").trim();
-    const member = await db.query.members.findFirst({
-      where: and(eq(schema.members.studentId, studentId), eq(schema.members.status, "active")),
-      columns: { id: true, fullName: true },
-    });
-    if (!member) return { message: `No active member with student ID "${studentId}".` };
-    await db.insert(schema.fastRegistrations).values({ fastId: fast.id, memberId: member.id }).onConflictDoNothing();
+    const fastType = form.get("fastType");
+    if (!isFastType(fastType)) return { message: "Choose the fast type." };
+    const m = await memberByStudentId(db, studentId);
+    const member = m ? await db.query.members.findFirst({ where: eq(schema.members.id, m.id), columns: { id: true, fullName: true, status: true } }) : null;
+    if (!member || (member.status !== "active" && member.status !== "pending")) {
+      return { message: `No member with student ID "${studentId}". They need to register as a member first.` };
+    }
+    await db
+      .insert(schema.fastRegistrations)
+      .values({ fastId: fast.id, memberId: member.id, fastType })
+      .onConflictDoUpdate({ target: [schema.fastRegistrations.fastId, schema.fastRegistrations.memberId], set: { fastType } });
     return { message: `${member.fullName} is registered.` };
   }
   if (intent === "remove") {
@@ -88,73 +129,192 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   throw new Response("Unknown action", { status: 400 });
 }
 
+const TABS = ["registered", "daily"] as const;
+
 export default function FastPage({ loaderData, actionData }: Route.ComponentProps) {
   const root = useRouteLoaderData<typeof rootLoader>("root");
   const lang = root?.lang ?? DEFAULT_LANG;
   const nav = useNavigation();
   const busy = nav.state !== "idle";
-  const { fast, isOn, canManage, today, registrants } = loaderData;
+  const [params] = useSearchParams();
+  const { fast, isOn, today, day, prevDay, nextDay, dayNumber, totalDays, canManage, registrants } = loaderData;
+  const tab = pickParam(params.get("tab"), TABS) ?? "registered";
+  const type = pickParam(params.get("type"), FAST_TYPES);
+  const q = params.get("q") ?? "";
+  const searched = registrants.filter((r) => matchesSearch(q, [r.fullName, r.studentId]));
+  const rows = searched.filter((r) => !type || r.fastType === type);
+  const typeCounts = countBy(searched, FAST_TYPES, (r) => r.fastType);
+  const keep = (extra: Record<string, string | null>) => {
+    const p = new URLSearchParams(params);
+    for (const [k, v] of Object.entries(extra)) (v === null ? p.delete(k) : p.set(k, v));
+    return `?${p.toString()}`;
+  };
+
+  // Daily numbers: eaten / expected for each meal
+  const mealTotals = fast.meals.map((m) => ({
+    meal: m,
+    eaten: rows.filter((r) => r.meals[m] === true).length,
+    expected: rows.filter((r) => r.meals[m] !== null && r.meals[m] !== undefined).length,
+  }));
 
   return (
     <section className="page wide">
-      <p className="muted"><Link to="/fasts">← Fasts</Link></p>
-      <h1>{fast.name}</h1>
-      <p className="muted" lang={lang}>{formatEc(fast.startDate, lang)} – {formatEc(fast.endDate, lang)}</p>
+      <PageHead
+        back={{ to: "/fasts", label: "Fasts" }}
+        title={fast.name}
+        sub={<span lang={lang}>{formatEc(fast.startDate, lang)} – {formatEc(fast.endDate, lang)}</span>}
+        actions={
+          <>
+            {isOn && <Link to={`/fasts/${fast.id}/scan`}>📷 Scanner</Link>}
+            {canManage && <Link to={`/fasts/${fast.id}/poster`}>🖨 Poster</Link>}
+          </>
+        }
+      />
       {actionData?.message && <p className="notice" role="status">{actionData.message}</p>}
 
-      <div className="stat-row">
-        <div className="stat"><span className="stat-n">{registrants.length}</span><span className="muted">registered</span></div>
-        {today.map((t) => (
-          <div key={t.meal} className="stat">
-            <span className="stat-n">{t.n}</span>
-            <span className="muted" lang={lang}>{MEAL_LABELS[t.meal][lang]} today</span>
-          </div>
+      <Tiles>
+        <Tile to={keep({ type: null })} n={typeCounts.all} label="Registered" />
+        {FAST_TYPES.map((t) => (
+          <Tile key={t} to={keep({ type: t })} n={typeCounts[t]} label={FAST_TYPE_LABELS[t][lang]} lang={lang} tone={type === t ? "green" : "slate"} />
         ))}
+      </Tiles>
+
+      <TabBar
+        active={tab}
+        tabs={[
+          { key: "registered", to: keep({ tab: "registered" }), label: "Registered", icon: "📋", count: rows.length },
+          { key: "daily", to: keep({ tab: "daily" }), label: "Daily meals", icon: "🍲" },
+        ]}
+      />
+
+      <div className="card filter-card">
+        <div className="filter-top">
+          <Form method="get" className="list-tools" role="search">
+            {[...params.entries()].filter(([k]) => k !== "q").map(([k, v]) => <input key={k} type="hidden" name={k} value={v} />)}
+            <input type="search" name="q" defaultValue={q} placeholder="Search name or student ID" aria-label="Search" />
+            <button className="btn btn-quiet btn-sm" aria-label="Search">🔍</button>
+          </Form>
+        </div>
+        <Chips label="Fast type" param="type" value={type} counts={typeCounts} lang={lang} options={FAST_TYPES.map((t) => [t, FAST_TYPE_LABELS[t][lang]] as const)} />
       </div>
-      {isOn ? (
-        <Link to={`/fasts/${fast.id}/scan`} className="btn btn-primary">Open scanner</Link>
-      ) : (
-        <p className="muted">The scanner opens on the days of the fast.</p>
+
+      {tab === "registered" && (
+        <>
+          {canManage && (
+            <details className="add-panel">
+              <summary>＋ Add someone by student ID</summary>
+              <Form method="post" className="inline-form">
+                <input type="hidden" name="intent" value="add" />
+                <label className="field">
+                  <span>Student ID</span>
+                  <input name="studentId" required maxLength={40} placeholder="UGR/1234/16" />
+                </label>
+                <label className="field">
+                  <span>Fast type</span>
+                  <select name="fastType" required defaultValue="">
+                    <option value="" disabled>Choose</option>
+                    {FAST_TYPES.map((t) => <option key={t} value={t}>{FAST_TYPE_LABELS[t].en}</option>)}
+                  </select>
+                </label>
+                <button className="btn btn-primary" disabled={busy}>Add</button>
+              </Form>
+            </details>
+          )}
+          {rows.length === 0 ? (
+            <p className="muted">Nobody yet. Print the poster so students can scan it and register.</p>
+          ) : (
+            <div className="table-wrap">
+              <table className="table-oneline">
+                <thead>
+                  <tr><th>#</th><th>Student ID</th><th>Name</th><th>Registered</th><th>Fast type</th>{canManage && <th><span className="visually-hidden">Actions</span></th>}</tr>
+                </thead>
+                <tbody>
+                  {rows.map((r, n) => (
+                    <tr key={r.memberId}>
+                      <td className="muted">{n + 1}</td>
+                      <td>{r.studentId}</td>
+                      <td><strong>{r.fullName}</strong></td>
+                      <td lang={lang}>{formatEc(new Date(r.registeredAt + 3 * 3600 * 1000).toISOString().slice(0, 10), lang)}</td>
+                      <td lang={lang}>{FAST_TYPE_LABELS[r.fastType][lang]}</td>
+                      {canManage && (
+                        <td>
+                          <Form
+                            method="post"
+                            onSubmit={(e) => {
+                              if (!window.confirm(`Remove ${r.fullName} from this fast?`)) e.preventDefault();
+                            }}
+                          >
+                            <input type="hidden" name="intent" value="remove" />
+                            <input type="hidden" name="memberId" value={r.memberId} />
+                            <button className="btn btn-quiet btn-sm" disabled={busy}>Remove</button>
+                          </Form>
+                        </td>
+                      )}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
       )}
 
-      <h2>Registered ({registrants.length})</h2>
-      {canManage && (
-        <Form method="post" className="inline-form">
-          <input type="hidden" name="intent" value="add" />
-          <label className="field">
-            <span>Add by student ID</span>
-            <input name="studentId" required maxLength={30} placeholder="UGR/1234/16" />
-          </label>
-          <button className="btn btn-quiet" disabled={busy}>Add</button>
-        </Form>
-      )}
-      {registrants.length === 0 ? (
-        <p className="muted">Nobody yet. Members register on the Fasts page.</p>
-      ) : (
-        <div className="table-wrap">
-          <table>
-            <thead><tr><th>Name</th><th>Student ID</th><th>Phone</th><th>Meals taken</th>{canManage && <th><span className="visually-hidden">Actions</span></th>}</tr></thead>
-            <tbody>
-              {registrants.map((r) => (
-                <tr key={r.memberId}>
-                  <td>{r.fullName}</td>
-                  <td>{r.studentId}</td>
-                  <td><a href={`tel:${r.phone}`}>{r.phone}</a></td>
-                  <td>{r.meals}</td>
-                  {canManage && (
-                    <td>
-                      <Form method="post">
-                        <input type="hidden" name="intent" value="remove" />
-                        <input type="hidden" name="memberId" value={r.memberId} />
-                        <button className="btn btn-quiet btn-sm" disabled={busy}>Remove</button>
-                      </Form>
-                    </td>
-                  )}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+      {tab === "daily" && (
+        <>
+          <div className="day-nav">
+            {prevDay ? <Link to={keep({ day: prevDay })} className="btn btn-quiet btn-sm" preventScrollReset>← Prev</Link> : <span className="btn btn-quiet btn-sm" aria-disabled="true">← Prev</span>}
+            <div className="day-nav-label">
+              <strong lang={lang}>{formatEc(day, lang)}</strong>
+              <span className="muted">Day {dayNumber} of {totalDays}{day === today ? " · today" : ""}</span>
+            </div>
+            {nextDay ? <Link to={keep({ day: nextDay })} className="btn btn-quiet btn-sm" preventScrollReset>Next →</Link> : <span className="btn btn-quiet btn-sm" aria-disabled="true">Next →</span>}
+          </div>
+          <Tiles>
+            {mealTotals.map((t) => (
+              <Tile key={t.meal} to={keep({})} n={`${t.eaten} / ${t.expected}`} label={MEAL_LABELS[t.meal][lang]} lang={lang} tone={t.expected && t.eaten === t.expected ? "green" : "lapis"} />
+            ))}
+          </Tiles>
+          {rows.length === 0 ? (
+            <p className="muted">Nobody to show.</p>
+          ) : (
+            <div className="table-wrap">
+              <table className="table-oneline meal-table">
+                <thead>
+                  <tr>
+                    <th>Student ID</th><th>Name</th><th>Fast type</th>
+                    {fast.meals.map((m) => <th key={m} className="meal-col" lang={lang}>{MEAL_LABELS[m][lang]}</th>)}
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((r) => (
+                    <tr key={r.memberId}>
+                      <td>{r.studentId}</td>
+                      <td><strong>{r.fullName}</strong></td>
+                      <td lang={lang} className="muted">{FAST_TYPE_LABELS[r.fastType][lang].split(" · ")[1]}</td>
+                      {fast.meals.map((m) => {
+                        const v = r.meals[m];
+                        if (v === null || v === undefined) return <td key={m} className="meal-col meal-skip" title="Fasting from this meal">—</td>;
+                        return (
+                          <td key={m} className="meal-col">
+                            <Form method="post" preventScrollReset>
+                              <input type="hidden" name="intent" value={v ? "unmark" : "mark"} />
+                              <input type="hidden" name="memberId" value={r.memberId} />
+                              <input type="hidden" name="meal" value={m} />
+                              <input type="hidden" name="day" value={day} />
+                              <button className={`meal-cell${v ? " is-eaten" : ""}`} disabled={busy} aria-label={`${r.fullName} ${MEAL_LABELS[m].en}: ${v ? "ate (tap to undo)" : "not yet (tap to mark)"}`}>
+                                {v ? "✓" : ""}
+                              </button>
+                            </Form>
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
       )}
 
       {canManage && (

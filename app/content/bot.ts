@@ -7,14 +7,9 @@ import type { ContentLang } from "../lib/lang";
  */
 export const BOT = {
   start:
-    "Baga nagaan dhuftan! Yaa'ii Mooraa Kaampaasii Hacaaluu Hundeessaatti galmaa'uuf, armaan gaditti \"Lakkoofsa bilbilaa qoodi\" tuqaa.\n\n" +
-    "እንኳን በደኅና መጡ! በሃጫሉ ሁንዴሳ ካምፓስ ግቢ ጉባኤ ለመመዝገብ ከታች ያለውን \"ስልክ ቁጥሬን አጋራ\" ይጫኑ።",
-  shareButton: "📱 Lakkoofsa bilbilaa qoodi / ስልክ ቁጥሬን አጋራ",
-  notOwnContact:
-    "Lakkoofsa bilbilaa keessan qofa qoodaa.\n\nእባክዎ የራስዎን ስልክ ቁጥር ብቻ ያጋሩ።",
-  saved: "Galatoomaa! Lakkoofsi bilbilaa keessan galmaa'eera.\n\nእናመሰግናለን! ስልክ ቁጥርዎ ተመዝግቧል።",
-  continue: "Galmee itti fufuuf armaan gadi tuqaa.\n\nምዝገባውን ለመቀጠል ከታች ይጫኑ።",
-  continueButton: "Galmee itti fufi / ምዝገባውን ቀጥል",
+    "Baga nagaan dhuftan! Yaa'ii Mooraa Kaampaasii Hacaaluu Hundeessaa. Galmaa'uuf ykn akkaawuntii keessan banuuf armaan gadi tuqaa.\n\n" +
+    "እንኳን በደኅና መጡ! ሃጫሉ ሁንዴሳ ካምፓስ ግቢ ጉባኤ። ለመመዝገብ ወይም መለያዎን ለመክፈት ከታች ይጫኑ።",
+  openButton: "Akkaawuntii koo bani / መለያዬን ክፈት",
 } as const;
 
 export const MEMBER_DECISION: Record<ContentLang, { approved: string; rejected: string }> = {

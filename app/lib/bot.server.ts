@@ -2,7 +2,6 @@ import { and, eq, isNotNull } from "drizzle-orm";
 import { z } from "zod";
 import { BOT } from "../content/bot";
 import { getDb, schema } from "../db";
-import { isOwnContact, normalizeContactPhone } from "./registration";
 
 /* ---------- Telegram Bot API ---------- */
 
@@ -56,58 +55,20 @@ const updateSchema = z.looseObject({
     .optional(),
 });
 
-const shareKeyboard = {
-  keyboard: [[{ text: BOT.shareButton, request_contact: true }]],
-  resize_keyboard: true,
-  one_time_keyboard: true,
-};
-
-function continueKeyboard(env: Env) {
+function openKeyboard(env: Env) {
   return {
-    inline_keyboard: [[{ text: BOT.continueButton, web_app: { url: `${env.PUBLIC_SITE_URL}/tg?next=%2Fregister` } }]],
+    inline_keyboard: [[{ text: BOT.openButton, web_app: { url: `${env.PUBLIC_SITE_URL}/tg?next=%2Fme` } }]],
   };
 }
 
 /**
- * Registration flow in the bot:
- *  /start (or any message) → ask for the phone number with a "share contact" button
- *  contact (their own)     → save it, then show "Continue registration", which
- *                            opens the website inside Telegram, already signed in.
+ * The bot never asks for a phone number. Any message (normally /start) gets a welcome and an
+ * "Open my account" button, which opens the website inside Telegram, signed in as this
+ * Telegram account (or offering to register / link an existing website account).
  */
 export async function handleUpdate(raw: unknown, env: Env) {
   const parsed = updateSchema.safeParse(raw);
   const msg = parsed.success ? parsed.data.message : undefined;
   if (!msg?.from || msg.chat.type !== "private") return; // ignore groups and non-message updates
-
-  const chatId = msg.chat.id;
-  const db = getDb(env.DB);
-
-  if (msg.contact) {
-    if (!isOwnContact(msg.contact.user_id, msg.from.id)) {
-      await sendMessage(env, chatId, BOT.notOwnContact, shareKeyboard);
-      return;
-    }
-    const phone = normalizeContactPhone(msg.contact.phone_number);
-    const telegramId = String(msg.from.id);
-    await db
-      .insert(schema.telegramContacts)
-      .values({ telegramId, phone, firstName: msg.from.first_name ?? null, username: msg.from.username ?? null })
-      .onConflictDoUpdate({
-        target: schema.telegramContacts.telegramId,
-        set: { phone, firstName: msg.from.first_name ?? null, username: msg.from.username ?? null, updatedAt: new Date() },
-      });
-    await sendMessage(env, chatId, BOT.saved, { remove_keyboard: true });
-    await sendMessage(env, chatId, BOT.continue, continueKeyboard(env));
-    return;
-  }
-
-  const known = await db.query.telegramContacts.findFirst({
-    where: eq(schema.telegramContacts.telegramId, String(msg.from.id)),
-    columns: { telegramId: true },
-  });
-  if (known) {
-    await sendMessage(env, chatId, BOT.continue, continueKeyboard(env));
-  } else {
-    await sendMessage(env, chatId, BOT.start, shareKeyboard);
-  }
+  await sendMessage(env, msg.chat.id, BOT.start, openKeyboard(env));
 }

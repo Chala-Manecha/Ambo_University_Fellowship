@@ -5,7 +5,9 @@ import type { Route } from "./+types/fasts.$id.scan";
 import type { loader as rootLoader } from "../root";
 import { getDb, schema } from "../db";
 import { todayInAddis } from "../lib/departments";
-import { addisHour, checkinDecision, defaultMeal, isFastOn, isMeal, MEAL_LABELS, type CheckinResult, type Meal } from "../lib/fasts";
+import { addisHour, defaultMeal, FAST_TYPE_LABELS, isFastOn, isMeal, MEAL_LABELS, type CheckinResult, type Meal } from "../lib/fasts";
+import { checkIn, loadRegistrants, type CheckinResponse } from "../lib/fasts.server";
+import { matchesSearch } from "../lib/dashboard";
 import { DEFAULT_LANG } from "../lib/lang";
 import { verifyMemberQr } from "../lib/member-qr";
 import { requirePermission } from "../lib/session.server";
@@ -31,13 +33,14 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
     isOn: isFastOn(fast, today),
     defaultMeal: defaultMeal(fast.meals, addisHour()),
     served: Object.fromEntries(served.map((s) => [s.meal, s.n])) as Partial<Record<Meal, number>>,
+    // For finding someone without their QR (forgot phone, broken screen)
+    registrants: (await loadRegistrants(db, fast.id)).map((r) => ({ memberId: r.memberId, fullName: r.fullName, studentId: r.studentId })),
   };
 }
 
-type Person = { fullName: string; studentId: string; image: string | null };
-export type ScanResponse = CheckinResult & { person?: Person };
+export type ScanResponse = CheckinResponse;
 
-/** One scan: verify the QR, check the rules, record the meal once. */
+/** One check-in: from a scanned QR (`code`) or from the search list (`memberId`). */
 export async function action({ request, params, context }: Route.ActionArgs): Promise<ScanResponse> {
   const { env } = context.cloudflare;
   const scanner = await requirePermission(request, env, "fast:scan");
@@ -47,53 +50,11 @@ export async function action({ request, params, context }: Route.ActionArgs): Pr
   const form = await request.formData();
   const meal = form.get("meal");
   if (!isMeal(meal)) return { kind: "invalid" };
-
-  const memberId = await verifyMemberQr(String(form.get("code") ?? ""), env.BETTER_AUTH_SECRET);
-  const row = memberId
-    ? await db
-        .select({ id: schema.members.id, status: schema.members.status, fullName: schema.members.fullName, studentId: schema.members.studentId, image: schema.user.image })
-        .from(schema.members)
-        .innerJoin(schema.user, eq(schema.user.id, schema.members.userId))
-        .where(eq(schema.members.id, memberId))
-        .get()
-    : undefined;
-  const person: Person | undefined = row ? { fullName: row.fullName, studentId: row.studentId, image: row.image } : undefined;
-  const registered = row
-    ? Boolean(
-        await db.query.fastRegistrations.findFirst({
-          where: and(eq(schema.fastRegistrations.fastId, fast.id), eq(schema.fastRegistrations.memberId, row.id)),
-        }),
-      )
-    : false;
-
-  const today = todayInAddis();
-  const blocked = checkinDecision({
-    memberFound: Boolean(row),
-    memberActive: row?.status === "active",
-    registered,
-    fastIsOn: isFastOn(fast, today),
-    mealAllowed: fast.meals.includes(meal),
-  });
-  if (blocked) return { ...blocked, person };
-
-  // The primary key (fast, member, date, meal) makes a second scan a no-op
-  const inserted = await db
-    .insert(schema.fastCheckins)
-    .values({ fastId: fast.id, memberId: row!.id, date: today, meal, scannedBy: scanner.id })
-    .onConflictDoNothing()
-    .returning({ createdAt: schema.fastCheckins.createdAt });
-  if (inserted.length > 0) return { kind: "ok", person };
-
-  const prev = await db.query.fastCheckins.findFirst({
-    where: and(
-      eq(schema.fastCheckins.fastId, fast.id),
-      eq(schema.fastCheckins.memberId, row!.id),
-      eq(schema.fastCheckins.date, today),
-      eq(schema.fastCheckins.meal, meal),
-    ),
-    columns: { createdAt: true },
-  });
-  return { kind: "already", at: prev?.createdAt.getTime() ?? Date.now(), person };
+  const code = form.get("code");
+  const memberId = typeof code === "string" && code
+    ? await verifyMemberQr(code, env.BETTER_AUTH_SECRET)
+    : String(form.get("memberId") ?? "") || null;
+  return checkIn(db, fast, memberId, meal, scanner.id, todayInAddis());
 }
 
 const RESULT_TEXT: Record<CheckinResult["kind"], { title: string; tone: "ok" | "warn" | "bad" }> = {
@@ -103,6 +64,7 @@ const RESULT_TEXT: Record<CheckinResult["kind"], { title: string; tone: "ok" | "
   inactive: { title: "Membership not active", tone: "bad" },
   not_today: { title: "This fast isn't on today", tone: "bad" },
   wrong_meal: { title: "This meal isn't served in this fast", tone: "bad" },
+  skips_meal: { title: "Fasting from this meal", tone: "bad" },
   invalid: { title: "Not a fellowship QR code", tone: "bad" },
 };
 
@@ -113,7 +75,9 @@ const SAME_CODE_MS = 6000;
 export default function Scanner({ loaderData }: Route.ComponentProps) {
   const root = useRouteLoaderData<typeof rootLoader>("root");
   const lang = root?.lang ?? DEFAULT_LANG;
-  const { fast, isOn, served } = loaderData;
+  const { fast, isOn, served, registrants } = loaderData;
+  const [query, setQuery] = useState("");
+  const matches = query.trim().length >= 2 ? registrants.filter((r) => matchesSearch(query, [r.fullName, r.studentId])).slice(0, 6) : [];
   const [meal, setMeal] = useState<Meal>(loaderData.defaultMeal);
   // `wanted` drives the camera effect; `camera` is only the status shown on screen
   const [wanted, setWanted] = useState(false);
@@ -228,6 +192,7 @@ export default function Scanner({ loaderData }: Route.ComponentProps) {
                 <span>{shown.person.fullName}<br /><small>{shown.person.studentId}</small></span>
               </span>
             )}
+            {shown.kind === "skips_meal" && <small lang={lang}>{FAST_TYPE_LABELS[shown.fastType][lang]}</small>}
             {shown.kind === "already" && (
               <small>at {new Date(shown.at).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: "Africa/Addis_Ababa" })}</small>
             )}
@@ -235,6 +200,34 @@ export default function Scanner({ loaderData }: Route.ComponentProps) {
           </button>
         )}
         {fetcher.state !== "idle" && <div className="scan-busy">Checking…</div>}
+      </div>
+
+      <div className="scan-search">
+        <label className="field">
+          <span>No QR? Search by name or student ID</span>
+          <input type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="UGR/1234/16 or name" />
+        </label>
+        {matches.length > 0 && (
+          <ul className="scan-matches">
+            {matches.map((r) => (
+              <li key={r.memberId}>
+                <button
+                  type="button"
+                  className="btn btn-quiet"
+                  disabled={fetcher.state !== "idle"}
+                  onClick={() => {
+                    paused.current = true;
+                    setQuery("");
+                    fetcher.submit({ memberId: r.memberId, meal }, { method: "post" });
+                  }}
+                >
+                  <strong>{r.fullName}</strong> <span className="muted">{r.studentId}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        {query.trim().length >= 2 && matches.length === 0 && <p className="muted">Nobody registered for this fast matches.</p>}
       </div>
     </section>
   );
