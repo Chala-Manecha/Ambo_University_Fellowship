@@ -160,6 +160,7 @@ export default function Register({ loaderData, actionData }: Route.ComponentProp
     <section className="page narrow">
       <h1>Member registration</h1>
       <p lang={lang} className="intro">{HOME[lang].registerIntro}</p>
+      <p className="notice">Fill in this form in <strong>English letters</strong> (e.g. Abebe Kebede, Computer Science).</p>
 
       {actionData?.formError && (
         <p className="form-error" role="alert">{actionData.formError}</p>

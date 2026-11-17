@@ -32,11 +32,19 @@ export function formatYear(year: number) {
   return year === GRADUATED ? "Graduated" : `Year ${year}`;
 }
 
+/** Ge'ez script (Amharic, Tigrinya…): registration is in English letters only. */
+const ETHIOPIC = /[\u1200-\u139F\u2D80-\u2DDF\uAB00-\uAB2F]/;
+export function isEnglishText(s: string) {
+  return !ETHIOPIC.test(s);
+}
+const ENGLISH_ONLY = "Write this in English letters (e.g. Abebe Kebede)";
+
 const optionalText = (max: number) =>
   z
     .string()
     .trim()
     .max(max)
+    .refine(isEnglishText, ENGLISH_ONLY)
     .optional()
     .transform((s) => (s ? s : null));
 
@@ -84,12 +92,12 @@ export function formToObject(form: FormData) {
 }
 
 const registrationObject = z.object({
-  fullName: z.string().trim().min(3, "Enter your full name").max(80),
+  fullName: z.string().trim().min(3, "Enter your full name").max(80).refine(isEnglishText, ENGLISH_ONLY),
   christianName: optionalText(60),
   gender: z.enum(["male", "female"], { message: "Choose male or female" }),
   phone: ethiopianPhone,
-  studentId: z.string().trim().min(2, "Enter your student ID").max(30),
-  fieldOfStudy: z.string().trim().min(2, "Enter your field of study").max(80),
+  studentId: z.string().trim().min(2, "Enter your student ID").max(30).refine(isEnglishText, ENGLISH_ONLY),
+  fieldOfStudy: z.string().trim().min(2, "Enter your field of study").max(80).refine(isEnglishText, ENGLISH_ONLY),
   // "" must not coerce to 0 (= Graduated), so treat it as missing
   yearOfStudy: z.preprocess(
     (v) => (v === "" ? undefined : v),

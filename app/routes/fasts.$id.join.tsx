@@ -10,6 +10,9 @@ import { FAST_TYPE_LABELS, FAST_TYPE_MEALS, FAST_TYPES, isFastType, MEAL_LABELS,
 import { DEFAULT_LANG } from "../lib/lang";
 import { memberQrText } from "../lib/member-qr";
 import { getUser } from "../lib/session.server";
+import { isTelegramLinked } from "../lib/accounts.server";
+import { telegramGate } from "../lib/telegram-gate.server";
+import { ConnectTelegram } from "../components/ConnectTelegram";
 
 export function meta() {
   return [{ title: "Fast registration · Gibi Gubae" }];
@@ -26,7 +29,7 @@ async function load(request: Request, env: Env, fastId: string) {
   const here = new URL(request.url).pathname;
   if (!user) throw redirect(`/login?next=${encodeURIComponent(here)}`);
   const db = getDb(env.DB);
-  const member = await db.query.members.findFirst({ where: eq(schema.members.userId, user.id), columns: { id: true, status: true } });
+  const member = await db.query.members.findFirst({ where: eq(schema.members.userId, user.id), columns: { id: true, status: true, userId: true } });
   if (!member) throw redirect(`/register?next=${encodeURIComponent(here)}`);
   const fast = await db.query.fasts.findFirst({ where: eq(schema.fasts.id, fastId) });
   if (!fast) throw new Response("Fast not found", { status: 404 });
@@ -41,7 +44,9 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
     columns: { fastType: true },
   });
   const allowed = member.status === "active" || member.status === "pending";
+  const tgGate = await telegramGate(db, env, member.userId);
   return {
+    tgGate,
     fast: { id: fast.id, name: fast.name, startDate: fast.startDate, endDate: fast.endDate, meals: fast.meals },
     ended: fast.endDate < todayInAddis(),
     allowed,
@@ -55,6 +60,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   const { db, member, fast } = await load(request, env, params.id);
   if (member.status !== "active" && member.status !== "pending") return { error: "Your membership isn't active. Contact a fellowship leader." };
   if (fast.endDate < todayInAddis()) return { error: "This fast has ended." };
+  if (!(await isTelegramLinked(db, member.userId))) return { error: "Connect Telegram first." };
   const fastType = (await request.formData()).get("fastType");
   if (!isFastType(fastType)) return { error: "Choose how you fast." };
   await db
@@ -71,7 +77,15 @@ export default function JoinFast({ loaderData, actionData }: Route.ComponentProp
   const root = useRouteLoaderData<typeof rootLoader>("root");
   const lang = root?.lang ?? DEFAULT_LANG;
   const busy = useNavigation().state !== "idle";
-  const { fast, ended, allowed, fastType, qrSvg } = loaderData;
+  const { fast, ended, allowed, fastType, qrSvg, tgGate } = loaderData;
+  if (tgGate) {
+    return (
+      <section className="page narrow">
+        <h1>{fast.name}</h1>
+        <ConnectTelegram linkUrl={tgGate.linkUrl} />
+      </section>
+    );
+  }
 
   return (
     <section className="page narrow">

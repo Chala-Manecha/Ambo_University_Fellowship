@@ -104,3 +104,18 @@ describe("round 3 member details", () => {
     expect(formToObject(f)).toMatchObject({ services: ["cafe", "trips"], learning: [], departments: [], fullName: "X" });
   });
 });
+
+describe("English only", () => {
+  const base = {
+    fullName: "Abebe Kebede", gender: "male", phone: "0911234567", studentId: "UGR/1/16", fieldOfStudy: "Law",
+    yearOfStudy: "2", contentLanguage: "am", birthDate: "2004-03-15",
+  };
+  it("refuses Amharic letters in names, field, notes", () => {
+    expect(registrationSchema.safeParse({ ...base, fullName: "አበበ ከበደ" }).success).toBe(false);
+    expect(registrationSchema.safeParse({ ...base, christianName: "ወልደ ሥላሴ" }).success).toBe(false);
+    expect(registrationSchema.safeParse({ ...base, fieldOfStudy: "ሕግ" }).success).toBe(false);
+    expect(registrationSchema.safeParse({ ...base, note: "ሰላም" }).success).toBe(false);
+    expect(registrationSchema.safeParse({ ...base, otherService: "ፎቶ" }).success).toBe(false);
+    expect(registrationSchema.safeParse({ ...base, christianName: "Wolde Selassie", note: "Hi" }).success).toBe(true);
+  });
+});

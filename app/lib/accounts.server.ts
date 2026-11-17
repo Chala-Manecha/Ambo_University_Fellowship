@@ -4,7 +4,7 @@
  *  - Website:  an `account` row with providerId "password", holding the PBKDF2 hash
  * On the website members sign in with their student ID (members.student_id_key -> user).
  */
-import { and, eq } from "drizzle-orm";
+import { and, eq, lt } from "drizzle-orm";
 import { schema, type Db } from "../db";
 import { afterFailure, isLocked } from "./login-limit";
 import { studentIdKey } from "./registration";
@@ -97,4 +97,36 @@ export async function recordLoginFailure(db: Db, key: string, now: number) {
 
 export async function clearLoginFailures(db: Db, key: string) {
   await db.delete(schema.loginAttempts).where(eq(schema.loginAttempts.key, key));
+}
+
+/* ---------- Connect Telegram (required for members) ---------- */
+
+export async function isTelegramLinked(db: Db, userId: string) {
+  const row = await db.query.account.findFirst({
+    where: and(eq(schema.account.providerId, TELEGRAM), eq(schema.account.userId, userId)),
+    columns: { id: true },
+  });
+  return Boolean(row);
+}
+
+const LINK_TTL_MS = 30 * 60 * 1000;
+
+/** A one-time code for t.me/<bot>?start=link_<code>. Telegram allows [A-Za-z0-9_-], up to 64 chars. */
+export async function createLinkToken(db: Db, userId: string, now = Date.now()) {
+  const token = Array.from(crypto.getRandomValues(new Uint8Array(18)), (b) => b.toString(16).padStart(2, "0")).join("");
+  await db.delete(schema.telegramLinkTokens).where(lt(schema.telegramLinkTokens.expiresAt, now)); // tidy old codes
+  await db.insert(schema.telegramLinkTokens).values({ token, userId, expiresAt: now + LINK_TTL_MS });
+  return token;
+}
+
+export type ConsumeResult = { ok: true; userId: string } | { ok: false; reason: "expired" | LinkError };
+
+/** Bot side: the person pressed Start with a link code. Ties their Telegram account to the code's user. */
+export async function consumeLinkToken(db: Db, token: string, tg: TgProfile, now = Date.now()): Promise<ConsumeResult> {
+  const row = await db.query.telegramLinkTokens.findFirst({ where: eq(schema.telegramLinkTokens.token, token) });
+  if (!row || row.expiresAt < now) return { ok: false, reason: "expired" };
+  const err = await linkTelegram(db, row.userId, tg);
+  if (err) return { ok: false, reason: err };
+  await db.delete(schema.telegramLinkTokens).where(eq(schema.telegramLinkTokens.userId, row.userId));
+  return { ok: true, userId: row.userId };
 }

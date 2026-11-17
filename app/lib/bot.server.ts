@@ -2,6 +2,7 @@ import { and, eq, isNotNull } from "drizzle-orm";
 import { z } from "zod";
 import { BOT } from "../content/bot";
 import { getDb, schema } from "../db";
+import { consumeLinkToken } from "./accounts.server";
 
 /* ---------- Telegram Bot API ---------- */
 
@@ -70,5 +71,19 @@ export async function handleUpdate(raw: unknown, env: Env) {
   const parsed = updateSchema.safeParse(raw);
   const msg = parsed.success ? parsed.data.message : undefined;
   if (!msg?.from || msg.chat.type !== "private") return; // ignore groups and non-message updates
+
+  // "Connect Telegram" from the website: /start link_<code>
+  const link = msg.text?.trim().match(/^\/start(?:@\w+)?\s+link_([a-f0-9]{16,64})$/i);
+  if (link) {
+    const from = msg.from;
+    const result = await consumeLinkToken(getDb(env.DB), link[1].toLowerCase(), {
+      id: from.id,
+      name: [from.first_name, (from as { last_name?: string }).last_name].filter(Boolean).join(" ") || from.username || `Telegram ${from.id}`,
+      username: from.username ?? null,
+    });
+    const text = result.ok ? BOT.linked : result.reason === "expired" ? BOT.linkExpired : BOT.linkTaken;
+    await sendMessage(env, msg.chat.id, text, openKeyboard(env));
+    return;
+  }
   await sendMessage(env, msg.chat.id, BOT.start, openKeyboard(env));
 }

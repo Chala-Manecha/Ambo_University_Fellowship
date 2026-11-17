@@ -8,7 +8,9 @@ import { TabBar, Tile, Tiles } from "../components/Dash";
 import { ReceiptInput } from "../components/ReceiptInput";
 import { TITLES } from "../content/member-options";
 import { getDb, schema } from "../db";
-import { getPasswordHash } from "../lib/accounts.server";
+import { getPasswordHash, isTelegramLinked } from "../lib/accounts.server";
+import { telegramGate } from "../lib/telegram-gate.server";
+import { ConnectTelegram } from "../components/ConnectTelegram";
 import {
   checkMonths,
   checkReceipt,
@@ -73,6 +75,8 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     staff: hasDashboard(user.role) || leaderOf.length > 0,
   };
   if (!member) return { ...base, member: null } as const;
+  const tgGate = await telegramGate(db, env, user.id);
+  if (tgGate) return { ...base, member, tgGate } as const;
 
   const today = todayInAddis();
   const current = dueMonth(today);
@@ -144,6 +148,7 @@ export async function action({ request, context }: Route.ActionArgs) {
   const db = getDb(env.DB);
   const member = await loadMember(db, user.id);
   if (!member || member.status !== "active") return { error: "Payments open once your membership is approved." };
+  if (!(await isTelegramLinked(db, user.id))) return { error: "Connect Telegram first." };
   const form = await request.formData();
 
   const parsed = contributionSchema.safeParse({ months: form.getAll("months").map(String), amount: form.get("amount"), note: form.get("note") ?? undefined });
@@ -200,10 +205,10 @@ export default function Account({ loaderData, actionData }: Route.ComponentProps
   const root = useRouteLoaderData<typeof rootLoader>("root");
   const lang = root?.lang ?? DEFAULT_LANG;
   const [params] = useSearchParams();
-  const d = loaderData;
+  const d0 = loaderData;
   const tab = pickParam(params.get("tab"), TABS) ?? "home";
 
-  if (!d.member) {
+  if (!d0.member) {
     return (
       <section className="page narrow">
         <h1>My account</h1>
@@ -212,6 +217,21 @@ export default function Account({ loaderData, actionData }: Route.ComponentProps
       </section>
     );
   }
+  if ("tgGate" in d0 && d0.tgGate) {
+    const g = d0.member;
+    return (
+      <section className="page narrow member-dash">
+        <header className="page-head member-head">
+          <h1>{g.fullName}</h1>
+          <p className="page-head-sub">{formatYear(g.yearOfStudy)} · {g.fieldOfStudy} · {g.studentId}</p>
+        </header>
+        {d0.flags.registered && <p className="notice" role="status">Registration submitted. One more step:</p>}
+        <ConnectTelegram linkUrl={d0.tgGate.linkUrl} />
+        <Form method="post" action="/logout" className="danger-zone"><button className="btn btn-quiet btn-sm">Sign out</button></Form>
+      </section>
+    );
+  }
+  const d = d0 as Loaded;
   const m = d.member;
   const active = m.status === "active";
 

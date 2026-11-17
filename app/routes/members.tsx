@@ -3,7 +3,7 @@ import { Form, Link, useLocation, useRouteLoaderData, useSearchParams } from "re
 import type { Route } from "./+types/members";
 import type { loader as rootLoader } from "../root";
 import { Chips, PageHead } from "../components/Dash";
-import { LEARNING, LEARNING_KEYS, SERVICES, SERVICE_KEYS, TITLES } from "../content/member-options";
+import { TITLES } from "../content/member-options";
 import { getDb, schema } from "../db";
 import { YEAR_KEYS } from "../lib/dashboard";
 import { departmentName } from "../lib/departments";
@@ -88,17 +88,6 @@ export default function Members({ loaderData }: Route.ComponentProps) {
         </div>
         <Chips label="Gender" param="gender" value={f.values.gender} counts={f.counts.gender} options={[["male", "Male"], ["female", "Female"]]} />
         <Chips label="Year" param="year" value={f.values.year} counts={f.counts.year} options={YEAR_KEYS.map((k) => [k, yearLabel(k)] as const)} />
-        <Chips
-          label="Department"
-          param="dept"
-          value={f.values.dept}
-          counts={f.counts.dept}
-          lang={lang}
-          options={[...departments.map((d) => [d.id, departmentName(d, lang)] as const), ["none", "None yet"] as const]}
-        />
-        <Chips label="Wants to serve" param="serve" value={f.values.serve} counts={f.counts.serve} lang={lang} options={SERVICE_KEYS.map((k) => [k, SERVICES[k][lang]] as const)} />
-        <Chips label="Wants to learn" param="learn" value={f.values.learn} counts={f.counts.learn} lang={lang} options={LEARNING_KEYS.map((k) => [k, LEARNING[k][lang]] as const)} />
-        <Chips label="Details" param="details" value={f.values.details} counts={f.counts.details} options={[["missing", "Missing birth date etc."]]} />
       </div>
 
       <h2 className="list-title">

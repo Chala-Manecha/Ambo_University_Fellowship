@@ -179,7 +179,6 @@ export default function Dashboard({ loaderData }: Route.ComponentProps) {
               <Tile to="/members?gender=male" n={members.male} label="Male" tone="slate" />
               <Tile to="/members?gender=female" n={members.female} label="Female" tone="slate" />
               <Tile to="/members" n={members.newLast30} label="New in 30 days" tone="green" />
-              <Tile to="/members?details=missing" n={members.missingDetails} label="Details missing" tone={members.missingDetails ? "red" : "slate"} />
             </Tiles>
             <div className="dash-two">
               <div className="table-wrap">
@@ -201,7 +200,7 @@ export default function Dashboard({ loaderData }: Route.ComponentProps) {
                   <tbody>
                     {members.services.map((s) => (
                       <tr key={s.key}>
-                        <td lang={lang}><Link to={`/members?serve=${s.key}`}>{SERVICES[s.key][lang]}</Link></td>
+                        <td lang={lang}>{SERVICES[s.key][lang]}</td>
                         <td className="num">{s.n}</td>
                       </tr>
                     ))}
@@ -214,7 +213,7 @@ export default function Dashboard({ loaderData }: Route.ComponentProps) {
                   <tbody>
                     {members.learning.map((s) => (
                       <tr key={s.key}>
-                        <td lang={lang}><Link to={`/members?learn=${s.key}`}>{LEARNING[s.key][lang]}</Link></td>
+                        <td lang={lang}>{LEARNING[s.key][lang]}</td>
                         <td className="num">{s.n}</td>
                       </tr>
                     ))}

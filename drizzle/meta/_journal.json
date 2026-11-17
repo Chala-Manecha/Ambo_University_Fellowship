@@ -43,6 +43,13 @@
       "when": 1794912767313,
       "tag": "0005_contributions",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1794914537782,
+      "tag": "0006_telegram_link_tokens",
+      "breakpoints": true
     }
   ]
 }
