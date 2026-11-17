@@ -53,7 +53,7 @@ export default function FellowshipAttendance({ loaderData, actionData }: Route.C
   const lang = root?.lang ?? DEFAULT_LANG;
   return (
     <section className="page">
-      <p className="muted"><Link to="/admin">← Admin</Link></p>
+      <p className="muted"><Link to="/dashboard">← Dashboard</Link></p>
       <h1>Fellowship attendance</h1>
       <p className="muted">For programs the whole fellowship attends. Department attendance is on each department's page.</p>
       <Form method="post" className="inline-form">

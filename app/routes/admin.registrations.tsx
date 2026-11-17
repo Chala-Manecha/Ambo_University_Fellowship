@@ -104,7 +104,7 @@ export default function ReviewRegistrations({ loaderData, actionData }: Route.Co
   const nav = useNavigation();
   return (
     <section className="page wide">
-      <p className="muted"><Link to="/admin">← Admin</Link></p>
+      <p className="muted"><Link to="/dashboard">← Dashboard</Link></p>
       <h1>Review registrations</h1>
       {actionData?.message && <p className="notice" role="status">{actionData.message}</p>}
       {pending.length === 0 ? (

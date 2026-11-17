@@ -75,7 +75,7 @@ export default function Members({ loaderData, actionData }: Route.ComponentProps
   const { members, myId } = loaderData;
   return (
     <section className="page wide">
-      <p className="muted"><Link to="/admin">← Admin</Link></p>
+      <p className="muted"><Link to="/dashboard">← Dashboard</Link></p>
       <h1>Members ({members.length})</h1>
       <p className="muted">
         Changes apply at the member's next sign-in or within 5 minutes. Department leaders are appointed on each department's page.

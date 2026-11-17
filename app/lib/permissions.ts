@@ -31,3 +31,8 @@ export function can(role: unknown, permission: Permission): boolean {
   if (!isRole(role)) return false;
   return (PERMISSIONS[permission] as readonly Role[]).includes(role);
 }
+
+/** Roles that get the dashboard. Department leaders also get it through their department. */
+export function hasDashboard(role: unknown) {
+  return role === "admin" || role === "dept_leader" || role === "cafe" || role === "finance";
+}

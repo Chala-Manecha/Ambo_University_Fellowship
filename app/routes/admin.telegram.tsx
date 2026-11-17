@@ -53,7 +53,7 @@ export default function TelegramAdmin({ loaderData, actionData }: Route.Componen
   const connected = info?.url === expectedUrl;
   return (
     <section className="page narrow">
-      <p className="muted"><Link to="/admin">← Admin</Link></p>
+      <p className="muted"><Link to="/dashboard">← Dashboard</Link></p>
       <h1>Telegram bot</h1>
       {actionData && (
         <p className={actionData.ok ? "notice" : "form-error"} role="status">{actionData.message}</p>

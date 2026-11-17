@@ -17,7 +17,7 @@ import { DEFAULT_LANG, langFromCookie } from "./lib/lang";
 import { eq } from "drizzle-orm";
 import { getDb, schema } from "./db";
 import { getUser } from "./lib/session.server";
-import { can } from "./lib/permissions";
+import { can, hasDashboard } from "./lib/permissions";
 import "./app.css";
 
 export const links: Route.LinksFunction = () => [
@@ -42,7 +42,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     botUrl: botLink(env.TELEGRAM_BOT_USERNAME),
     user,
     isMember,
-    isAdmin: user ? can(user.role, "member:manage") : false,
+    hasDashboard: user ? hasDashboard(user.role) : false,
   };
 }
 
@@ -71,7 +71,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
             {data?.botUrl && !data.isMember && <a href={data.botUrl}>Register</a>}
             {data?.user && <NavLink to="/departments">Departments</NavLink>}
             {data?.user && <NavLink to="/fasts">Fasts</NavLink>}
-            {data?.isAdmin && <NavLink to="/admin">Admin</NavLink>}
+            {data?.hasDashboard && <NavLink to="/dashboard">Dashboard</NavLink>}
             {data?.user ? <NavLink to="/account">My account</NavLink> : <NavLink to="/login">Sign in</NavLink>}
           </nav>
           {data && <LangSwitch current={data.lang} />}

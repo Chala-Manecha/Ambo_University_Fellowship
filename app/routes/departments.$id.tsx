@@ -1,5 +1,7 @@
 import { and, asc, desc, eq, inArray } from "drizzle-orm";
-import { Form, Link, redirect, useNavigation, useRouteLoaderData } from "react-router";
+import { Form, Link, redirect, useNavigation, useRouteLoaderData, useSearchParams } from "react-router";
+import { PageHead, TabBar, Tile, Tiles } from "../components/Dash";
+import { pickParam } from "../lib/dashboard";
 import type { Route } from "./+types/departments.$id";
 import type { loader as rootLoader } from "../root";
 import { DEPARTMENT_APPROVED } from "../content/bot";
@@ -95,6 +97,7 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
       .filter((p) => p.status === "active")
       .map((p) => ({ ...p, rate: attendanceRate(byMember.get(p.memberId) ?? []) })),
     sessions: sessions.map((s) => ({ ...s, present: presentBySession.get(s.id) ?? 0 })),
+    rate: attendanceRate(records.map((r) => r.status)).percent,
   };
 }
 
@@ -180,104 +183,139 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   throw new Response("Unknown action", { status: 400 });
 }
 
+const TABS = ["members", "requests", "attendance"] as const;
+
 export default function Department({ loaderData, actionData }: Route.ComponentProps) {
   const root = useRouteLoaderData<typeof rootLoader>("root");
   const lang = root?.lang ?? DEFAULT_LANG;
   const nav = useNavigation();
   const busy = nav.state !== "idle";
-  const { dept, isAdmin, today, pending, active, sessions } = loaderData;
+  const [params] = useSearchParams();
+  const { dept, isAdmin, today, pending, active, sessions, rate } = loaderData;
   const message = actionData && "message" in actionData ? actionData.message : null;
   const error = actionData && "error" in actionData ? actionData.error : null;
+  const tab = pickParam(params.get("tab"), TABS) ?? (pending.length > 0 && !params.get("tab") ? "requests" : "members");
+  const leaders = active.filter((p) => p.role === "leader");
 
   return (
     <section className="page wide">
-      <p className="muted"><Link to="/departments">← Departments</Link></p>
-      <h1 lang={lang}>{departmentName(dept, lang)}</h1>
+      <PageHead
+        back={{ to: "/dashboard", label: "Dashboard" }}
+        title={departmentName(dept, lang)}
+        lang={lang}
+        sub={leaders.length ? <>Led by {leaders.map((l) => l.fullName).join(", ")}</> : "No leader yet"}
+        actions={<Link to="/departments">All departments</Link>}
+      />
       {message && <p className="notice" role="status">{message}</p>}
 
-      {pending.length > 0 && (
-        <>
-          <h2>Join requests</h2>
-          <div className="table-wrap">
-            <table>
-              <thead><tr><th>Name</th><th>Phone</th><th>Telegram</th><th><span className="visually-hidden">Actions</span></th></tr></thead>
-              <tbody>
-                {pending.map((p) => (
-                  <tr key={p.id}>
-                    <td>{p.fullName}</td>
-                    <td><a href={`tel:${p.phone}`}>{p.phone}</a></td>
-                    <td>{p.telegramUsername ? `@${p.telegramUsername}` : "—"}</td>
-                    <td>
-                      <Form method="post" className="row-actions">
-                        <input type="hidden" name="rowId" value={p.id} />
-                        <button name="intent" value="approve" className="btn btn-primary btn-sm" disabled={busy}>Approve</button>
-                        <button name="intent" value="reject" className="btn btn-quiet btn-sm" disabled={busy}>Decline</button>
-                      </Form>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </>
+      <Tiles>
+        <Tile to="?tab=members" n={active.length} label="Members" />
+        <Tile to="?tab=requests" n={pending.length} label="Join requests" tone={pending.length ? "gold" : "slate"} />
+        <Tile to="?tab=attendance" n={sessions.length} label="Sessions" tone="slate" />
+        <Tile to="?tab=attendance" n={rate === null ? "—" : `${rate}%`} label="Attendance" tone="green" />
+      </Tiles>
+
+      <TabBar
+        active={tab}
+        tabs={[
+          { key: "members", to: "?tab=members", label: "Members", icon: "👥", count: active.length },
+          { key: "requests", to: "?tab=requests", label: "Requests", icon: "🙋", count: pending.length, alert: true },
+          { key: "attendance", to: "?tab=attendance", label: "Attendance", icon: "✅", count: sessions.length },
+        ]}
+      />
+
+      {tab === "requests" && (
+        <div className="card">
+          {pending.length === 0 ? (
+            <p className="muted">No requests waiting. Members ask to join from the Departments page or when they register.</p>
+          ) : (
+            <div className="table-wrap">
+              <table className="table-oneline">
+                <thead><tr><th>Name</th><th>Phone</th><th>Telegram</th><th><span className="visually-hidden">Actions</span></th></tr></thead>
+                <tbody>
+                  {pending.map((p) => (
+                    <tr key={p.id}>
+                      <td>{p.fullName}</td>
+                      <td><a href={`tel:${p.phone}`}>{p.phone}</a></td>
+                      <td>{p.telegramUsername ? <a href={`https://t.me/${p.telegramUsername}`} target="_blank" rel="noreferrer">@{p.telegramUsername}</a> : "—"}</td>
+                      <td>
+                        <Form method="post" className="row-actions">
+                          <input type="hidden" name="rowId" value={p.id} />
+                          <button name="intent" value="approve" className="btn btn-primary btn-sm" disabled={busy}>Approve</button>
+                          <button name="intent" value="reject" className="btn btn-quiet btn-sm" disabled={busy}>Decline</button>
+                        </Form>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
       )}
 
-      <h2>Attendance</h2>
-      <Form method="post" className="inline-form">
-        <input type="hidden" name="intent" value="new-session" />
-        <label className="field">
-          <span>Title</span>
-          <input name="title" required maxLength={80} placeholder="Saturday class" />
-        </label>
-        <EcDatePicker name="date" label="Date" lang={lang} defaultIso={today} minYear={isoToEc(today).year - 1} maxYear={isoToEc(today).year + 1} />
-        <button className="btn btn-primary" disabled={busy}>Take attendance</button>
-      </Form>
-      {error && <p className="form-error" role="alert">{error}</p>}
-      {sessions.length > 0 ? (
-        <ul className="session-list">
-          {sessions.map((s) => (
-            <li key={s.id}>
-              <Link to={`/attendance/${s.id}`}><span lang={lang}>{formatEc(s.date, lang)}</span> · {s.title}</Link>
-              <span className="muted"> — {s.present} present</span>
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <p className="muted">No sessions yet.</p>
-      )}
-
-      <h2>Members ({active.length})</h2>
-      {active.length === 0 ? (
-        <p className="muted">No members yet. Members join from the Departments page.</p>
-      ) : (
-        <div className="table-wrap">
-          <table>
-            <thead><tr><th>Name</th><th>Phone</th><th>Telegram</th><th>Attendance</th><th><span className="visually-hidden">Actions</span></th></tr></thead>
-            <tbody>
-              {active.map((p) => (
-                <tr key={p.id}>
-                  <td>{p.fullName} {p.role === "leader" && <span className="pill pill-active">Leader</span>}</td>
-                  <td><a href={`tel:${p.phone}`}>{p.phone}</a></td>
-                  <td>{p.telegramUsername ? `@${p.telegramUsername}` : "—"}</td>
-                  <td>{p.rate.percent === null ? "—" : `${p.rate.percent}% (${p.rate.present}/${p.rate.present + p.rate.absent})`}</td>
-                  <td>
-                    <Form method="post" className="row-actions">
-                      <input type="hidden" name="rowId" value={p.id} />
-                      {isAdmin &&
-                        (p.role === "leader" ? (
-                          <button name="intent" value="remove-leader" className="btn btn-quiet btn-sm" disabled={busy}>Remove leader</button>
-                        ) : (
-                          <button name="intent" value="make-leader" className="btn btn-quiet btn-sm" disabled={busy}>Make leader</button>
-                        ))}
-                      {(isAdmin || p.role !== "leader") && (
-                        <button name="intent" value="remove" className="btn btn-quiet btn-sm" disabled={busy}>Remove</button>
-                      )}
-                    </Form>
-                  </td>
-                </tr>
+      {tab === "attendance" && (
+        <div className="card">
+          <Form method="post" className="inline-form">
+            <input type="hidden" name="intent" value="new-session" />
+            <label className="field">
+              <span>Title</span>
+              <input name="title" required maxLength={80} placeholder="Saturday class" />
+            </label>
+            <EcDatePicker name="date" label="Date" lang={lang} defaultIso={today} minYear={isoToEc(today).year - 1} maxYear={isoToEc(today).year + 1} />
+            <button className="btn btn-primary" disabled={busy}>Take attendance</button>
+          </Form>
+          {error && <p className="form-error" role="alert">{error}</p>}
+          {sessions.length > 0 ? (
+            <ul className="session-list">
+              {sessions.map((s) => (
+                <li key={s.id}>
+                  <Link to={`/attendance/${s.id}`}><span lang={lang}>{formatEc(s.date, lang)}</span> · {s.title}</Link>
+                  <span className="muted"> — {s.present} present</span>
+                </li>
               ))}
-            </tbody>
-          </table>
+            </ul>
+          ) : (
+            <p className="muted">No sessions yet.</p>
+          )}
+        </div>
+      )}
+
+      {tab === "members" && (
+        <div className="card">
+          {active.length === 0 ? (
+            <p className="muted">No members yet. Members join from the Departments page.</p>
+          ) : (
+            <div className="table-wrap">
+              <table className="table-oneline">
+                <thead><tr><th>Name</th><th>Phone</th><th>Telegram</th><th className="num">Attendance</th><th><span className="visually-hidden">Actions</span></th></tr></thead>
+                <tbody>
+                  {active.map((p) => (
+                    <tr key={p.id}>
+                      <td>{p.fullName} {p.role === "leader" && <span className="pill pill-active">Leader</span>}</td>
+                      <td><a href={`tel:${p.phone}`}>{p.phone}</a></td>
+                      <td>{p.telegramUsername ? <a href={`https://t.me/${p.telegramUsername}`} target="_blank" rel="noreferrer">@{p.telegramUsername}</a> : "—"}</td>
+                      <td className="num">{p.rate.percent === null ? "—" : `${p.rate.percent}% (${p.rate.present}/${p.rate.present + p.rate.absent})`}</td>
+                      <td>
+                        <Form method="post" className="row-actions">
+                          <input type="hidden" name="rowId" value={p.id} />
+                          {isAdmin &&
+                            (p.role === "leader" ? (
+                              <button name="intent" value="remove-leader" className="btn btn-quiet btn-sm" disabled={busy}>Remove leader</button>
+                            ) : (
+                              <button name="intent" value="make-leader" className="btn btn-quiet btn-sm" disabled={busy}>Make leader</button>
+                            ))}
+                          {(isAdmin || p.role !== "leader") && (
+                            <button name="intent" value="remove" className="btn btn-quiet btn-sm" disabled={busy}>Remove</button>
+                          )}
+                        </Form>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       )}
     </section>

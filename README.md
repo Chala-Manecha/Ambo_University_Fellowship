@@ -63,6 +63,15 @@ Code: `app/lib/bot.server.ts` (updates and notifications), `app/content/bot.ts` 
   coordinators** (role set on `/admin/members`) scan at the cafe on `/fasts/<id>/scan`. Each member can be
   served once per meal per day.
 
+## Dashboards
+- `/dashboard` (admins, department leaders, cafe coordinators): members by status, gender, year of study,
+  service areas and learning interests; departments with members, requests, leaders and attendance %;
+  current fasts; recent fellowship attendance. Every number links to the list behind it. `/admin` redirects here.
+- `/members` (admins and department leaders): filter chips that combine (gender, year, department, wants to
+  serve, wants to learn, missing details) plus search; `⬇ CSV` downloads exactly what's filtered.
+- Each department page has tiles and tabs: Members, Requests, Attendance.
+- Logic is in `app/lib/dashboard.ts` and `app/lib/member-filters.ts`, tested in `tests/dashboard.test.ts`.
+
 ## Making the first admin
 Sign in once with Telegram, then:
 ```
