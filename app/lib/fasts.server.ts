@@ -1,7 +1,8 @@
 import { and, asc, eq } from "drizzle-orm";
 import { schema, type Db } from "../db";
+import { can } from "./permissions";
 import type { Fast } from "../db/schema";
-import { checkinDecision, isFastOn, type CheckinResult, type FastType, type Meal } from "./fasts";
+import { checkinDecision, dailyLimitReached, isFastOn, MEALS_PER_DAY, type CheckinResult, type FastType, type Meal } from "./fasts";
 
 export type Person = { fullName: string; studentId: string; image: string | null; fastType: FastType | null };
 export type CheckinResponse = CheckinResult & { person?: Person };
@@ -27,6 +28,7 @@ export async function checkIn(
           fullName: schema.members.fullName,
           studentId: schema.members.studentId,
           image: schema.user.image,
+          photoKey: schema.members.photoKey,
         })
         .from(schema.members)
         .innerJoin(schema.user, eq(schema.user.id, schema.members.userId))
@@ -40,7 +42,7 @@ export async function checkIn(
       })
     : undefined;
   const person: Person | undefined = row
-    ? { fullName: row.fullName, studentId: row.studentId, image: row.image, fastType: registration?.fastType ?? null }
+    ? { fullName: row.fullName, studentId: row.studentId, image: row.photoKey ? `/photos/${row.id}` : row.image, fastType: registration?.fastType ?? null }
     : undefined;
 
   const blocked = checkinDecision({
@@ -49,10 +51,19 @@ export async function checkIn(
     registered: Boolean(registration),
     fastIsOn: isFastOn(fast, today),
     mealAllowed: fast.meals.includes(meal),
-    fastType: registration?.fastType ?? null,
-    meal,
   });
   if (blocked) return { ...blocked, person };
+
+  // Today's meals so far: the same meal again is "already served"; past their number, "used today's limit"
+  const todays = await db
+    .select({ meal: schema.fastCheckins.meal, createdAt: schema.fastCheckins.createdAt })
+    .from(schema.fastCheckins)
+    .where(and(eq(schema.fastCheckins.fastId, fast.id), eq(schema.fastCheckins.memberId, row!.id), eq(schema.fastCheckins.date, today)));
+  const same = todays.find((t) => t.meal === meal);
+  if (same) return { kind: "already", at: same.createdAt.getTime(), person };
+  if (registration && dailyLimitReached(registration.fastType, todays.length)) {
+    return { kind: "limit", fastType: registration.fastType, perDay: MEALS_PER_DAY[registration.fastType], person };
+  }
 
   // The primary key (fast, member, date, meal) makes a second scan a no-op
   const inserted = await db
@@ -88,4 +99,16 @@ export async function loadRegistrants(db: Db, fastId: string) {
     .innerJoin(schema.members, eq(schema.members.id, schema.fastRegistrations.memberId))
     .where(eq(schema.fastRegistrations.fastId, fastId))
     .orderBy(asc(schema.members.fullName));
+}
+
+/** Admins and cafe coordinators scan every fast; up to 4 chosen members scan one fast. */
+export async function canScanFast(db: Db, user: { id: string; role: string }, fastId: string) {
+  if (can(user.role, "fast:scan")) return true;
+  const row = await db
+    .select({ fastId: schema.fastScanners.fastId })
+    .from(schema.fastScanners)
+    .innerJoin(schema.members, eq(schema.members.id, schema.fastScanners.memberId))
+    .where(and(eq(schema.fastScanners.fastId, fastId), eq(schema.members.userId, user.id)))
+    .get();
+  return Boolean(row);
 }

@@ -63,7 +63,7 @@ export function MemberDetailsFields({
       )}
 
       <fieldset className="field" aria-invalid={Boolean(errors.services)}>
-        <legend>Where you'd like to serve <small>Choose any</small></legend>
+        <legend>Where you'd like to serve <small>Choose at least one</small></legend>
         <p lang={lang} className="field-hint">{t.serve}</p>
         <div className="checks" lang={lang}>
           {SERVICE_KEYS.map((k) => (
@@ -79,8 +79,8 @@ export function MemberDetailsFields({
         {errors.services && <span className="field-error">{errors.services}</span>}
       </fieldset>
 
-      <fieldset className="field">
-        <legend>What you'd like to learn</legend>
+      <fieldset className="field" aria-invalid={Boolean(errors.learning)}>
+        <legend>What you'd like to learn <small>Choose at least one</small></legend>
         <p lang={lang} className="field-hint">{t.learn}</p>
         <div className="checks" lang={lang}>
           {LEARNING_KEYS.map((k) => (
@@ -89,6 +89,7 @@ export function MemberDetailsFields({
             </label>
           ))}
         </div>
+        {errors.learning && <span className="field-error">{errors.learning}</span>}
       </fieldset>
     </>
   );

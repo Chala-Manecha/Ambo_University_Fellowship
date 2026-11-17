@@ -137,6 +137,14 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     attendance: attendance.slice(0, 20),
     rate2: attendanceRate(attendance.map((a) => a.status)),
     fast: fast ? { id: fast.id, name: fast.name, isOn: isFastOn(fast, today), fastType: fastReg?.fastType ?? null } : null,
+    // Fasts this member was chosen to scan for (shown while the fast is on)
+    scanFor: (
+      await db
+        .select({ id: schema.fasts.id, name: schema.fasts.name, startDate: schema.fasts.startDate, endDate: schema.fasts.endDate })
+        .from(schema.fastScanners)
+        .innerJoin(schema.fasts, eq(schema.fasts.id, schema.fastScanners.fastId))
+        .where(and(eq(schema.fastScanners.memberId, member.id), gte(schema.fasts.endDate, today)))
+    ).filter((f) => isFastOn(f, today)),
     qrSvg: member.status === "active" ? renderSVG(await memberQrText(member.id, env.BETTER_AUTH_SECRET), { border: 2 }) : null,
   };
 }
@@ -304,6 +312,10 @@ export default function Account({ loaderData, actionData }: Route.ComponentProps
             )}
             <Tile to="?tab=departments" n={d.departments.filter((x) => x.status === "active").length} label="My departments" tone="slate" />
           </Tiles>
+
+          {d.scanFor.map((f) => (
+            <Link key={f.id} to={`/fasts/${f.id}/scan`} className="btn btn-primary scan-cta">📷 Open cafe scanner · {f.name}</Link>
+          ))}
 
           {active && d.qrSvg && (
             <div className="card member-card">

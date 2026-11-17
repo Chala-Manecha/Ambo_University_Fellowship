@@ -2,7 +2,9 @@ import { and, eq, isNotNull } from "drizzle-orm";
 import { z } from "zod";
 import { BOT } from "../content/bot";
 import { getDb, schema } from "../db";
-import { consumeLinkToken } from "./accounts.server";
+import { consumeLinkToken, userIdForTelegram } from "./accounts.server";
+import { memberQrText } from "./member-qr";
+import { qrPng } from "./qr-png";
 
 /* ---------- Telegram Bot API ---------- */
 
@@ -27,6 +29,35 @@ export async function tgCall<T = unknown>(env: Env, method: string, payload: obj
 
 export function sendMessage(env: Env, chatId: number | string, text: string, replyMarkup?: object) {
   return tgCall(env, "sendMessage", { chat_id: chatId, text, reply_markup: replyMarkup });
+}
+
+/** Sends a PNG as a photo (multipart upload; tgCall only does JSON). */
+export async function sendPhoto(env: Env, chatId: number | string, png: Uint8Array, caption: string) {
+  try {
+    const form = new FormData();
+    form.set("chat_id", String(chatId));
+    form.set("caption", caption);
+    form.set("photo", new Blob([png as Uint8Array<ArrayBuffer>], { type: "image/png" }), "qr.png");
+    const res = await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendPhoto`, { method: "POST", body: form });
+    const data = (await res.json().catch(() => null)) as TgResult | null;
+    if (!data?.ok) console.warn("telegram sendPhoto failed:", data?.description ?? res.status);
+    return data ?? { ok: false };
+  } catch (err) {
+    console.warn("telegram sendPhoto failed:", err);
+    return { ok: false };
+  }
+}
+
+/** Sends a member their QR code (the one the cafe scans), in their language. No-op if they aren't a member. */
+export async function sendMemberQr(env: Env, userId: string, chatId: number | string) {
+  const member = await getDb(env.DB).query.members.findFirst({
+    where: eq(schema.members.userId, userId),
+    columns: { id: true, fullName: true, studentId: true, contentLanguage: true },
+  });
+  if (!member) return false;
+  const png = await qrPng(await memberQrText(member.id, env.BETTER_AUTH_SECRET));
+  await sendPhoto(env, chatId, png, `${member.fullName} · ${member.studentId}\n\n${BOT.qrCaption[member.contentLanguage]}`);
+  return true;
 }
 
 /* ---------- Notifications ---------- */
@@ -83,7 +114,14 @@ export async function handleUpdate(raw: unknown, env: Env) {
     });
     const text = result.ok ? BOT.linked : result.reason === "expired" ? BOT.linkExpired : BOT.linkTaken;
     await sendMessage(env, msg.chat.id, text, openKeyboard(env));
+    // Right after registering: their member QR code, to keep for the cafe
+    if (result.ok) await sendMemberQr(env, result.userId, msg.chat.id);
     return;
   }
   await sendMessage(env, msg.chat.id, BOT.start, openKeyboard(env));
+  // A member who presses Start again (or types /qr) gets their QR code again
+  if (/^\/(start|qr)\b/i.test(msg.text?.trim() ?? "")) {
+    const userId = await userIdForTelegram(getDb(env.DB), String(msg.from.id));
+    if (userId) await sendMemberQr(env, userId, msg.chat.id);
+  }
 }

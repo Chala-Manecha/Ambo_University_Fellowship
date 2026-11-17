@@ -8,7 +8,7 @@ import { Turnstile } from "../components/Turnstile";
 import { FORM_TEXT } from "../content/member-options";
 import { HOME } from "../content/site";
 import { getDb, schema, type Db } from "../db";
-import { notifyAdmins } from "../lib/bot.server";
+import { notifyAdmins, sendMemberQr } from "../lib/bot.server";
 import { DEFAULT_LANG } from "../lib/lang";
 import { departmentName, todayInAddis } from "../lib/departments";
 import { ethiopianPhone, formatYear, formToObject, GRADUATED, registrationFormSchema, studentIdKey } from "../lib/registration";
@@ -85,8 +85,17 @@ export async function action({ request, context }: Route.ActionArgs) {
   const obj = formToObject(form);
   const parsed = registrationFormSchema.safeParse(obj);
   const extra = extraSchema.safeParse(obj);
-  if (!parsed.success || !extra.success) {
-    const fieldErrors: FieldErrors = {};
+  // Every field on the form is required (a title only applies to those who have one)
+  const missing: FieldErrors = {};
+  const filled = (k: string) => typeof obj[k] === "string" && (obj[k] as string).trim() !== "";
+  if (!filled("christianName")) missing.christianName = "Enter your Christian name";
+  if (!filled("phone")) missing.phone = "Enter your phone number";
+  if (!filled("note")) missing.note = "Write something, even “nothing”";
+  if (!(obj.services as string[]).length && !filled("otherService")) missing.services = "Choose at least one";
+  if (!(obj.learning as string[]).length) missing.learning = "Choose at least one";
+  if (!(obj.departments as string[]).length) missing.departments = "Choose at least one department";
+  if (!parsed.success || !extra.success || Object.keys(missing).length) {
+    const fieldErrors: FieldErrors = { ...missing };
     for (const issue of [...(parsed.error?.issues ?? []), ...(extra.error?.issues ?? [])]) {
       fieldErrors[String(issue.path[0])] ??= issue.message;
     }
@@ -136,11 +145,18 @@ export async function action({ request, context }: Route.ActionArgs) {
   );
 
   const dest = next === "/account" ? "/account?registered=1" : next;
-  if (user) throw redirect(dest);
+  // Straight after registering: to the bot. Already on Telegram (registered inside the bot)? Send the QR now.
+  const tgId = user ? (await db.query.user.findFirst({ where: eq(schema.user.id, userId), columns: { telegramId: true } }))?.telegramId : null;
+  if (tgId) {
+    ctx.waitUntil(sendMemberQr(env, userId, tgId));
+    throw redirect(dest);
+  }
+  const welcome = `/welcome?next=${encodeURIComponent(dest)}`;
+  if (user) throw redirect(welcome);
   // Signed out: sign them in with what they just chose
   const signedIn = await signInWithStudentId(request, env, d.studentId, extra.data.password);
   if ("error" in signedIn) throw redirect("/login");
-  throw redirect(dest, { headers: signedIn.headers });
+  throw redirect(welcome, { headers: signedIn.headers });
 }
 
 export default function Register({ loaderData, actionData }: Route.ComponentProps) {
@@ -173,7 +189,7 @@ export default function Register({ loaderData, actionData }: Route.ComponentProp
       <Form method="post" className="form" noValidate>
         <input type="hidden" name="next" value={loaderData.next} />
         <Field label="Full name" name="fullName" error={errors.fullName} defaultValue={loaderData.userName} required autoComplete="name" />
-        <Field label="Christian name" name="christianName" error={errors.christianName} hint="Optional" />
+        <Field label="Christian name" name="christianName" error={errors.christianName} required />
 
         <fieldset className="field" aria-invalid={Boolean(errors.gender)}>
           <legend>Gender</legend>
@@ -185,7 +201,7 @@ export default function Register({ loaderData, actionData }: Route.ComponentProp
         </fieldset>
 
         <Field label="Student ID" name="studentId" error={errors.studentId} required autoCapitalize="characters" placeholder="UGR/1234/16" hint="You'll sign in with this" />
-        <Field label="Phone" name="phone" type="tel" inputMode="tel" placeholder="09XX XXX XXX" error={errors.phone} hint="Optional" autoComplete="tel" defaultValue={loaderData.phone} />
+        <Field label="Phone" name="phone" type="tel" inputMode="tel" placeholder="09XX XXX XXX" error={errors.phone} required autoComplete="tel" defaultValue={loaderData.phone} />
         <Field label="Field of study" name="fieldOfStudy" error={errors.fieldOfStudy} required />
 
         <label className="field">
@@ -212,7 +228,7 @@ export default function Register({ loaderData, actionData }: Route.ComponentProp
         <MemberDetailsFields lang={lang} showTitle={isMale} today={loaderData.today} errors={errors} />
 
         <fieldset className="field">
-          <legend>Departments to serve in <small>Choose any</small></legend>
+          <legend>Departments to serve in <small>Choose at least one</small></legend>
           <p lang={lang} className="field-hint">{FORM_TEXT[lang].departments}</p>
           <div className="checks" lang={lang}>
             {loaderData.departments.map((d) => (
@@ -221,11 +237,13 @@ export default function Register({ loaderData, actionData }: Route.ComponentProp
               </label>
             ))}
           </div>
+          {errors.departments && <span className="field-error">{errors.departments}</span>}
         </fieldset>
 
         <label className="field">
-          <span>Anything we should know? <small>Optional</small></span>
-          <textarea name="note" rows={3} maxLength={500} />
+          <span>Anything we should know?</span>
+          <textarea name="note" rows={3} maxLength={500} required aria-invalid={Boolean(errors.note)} placeholder="e.g. your church back home, or “nothing”" />
+          {errors.note && <span className="field-error">{errors.note}</span>}
         </label>
 
         <fieldset className="field">

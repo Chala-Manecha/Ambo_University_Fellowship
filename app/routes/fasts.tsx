@@ -53,7 +53,8 @@ export async function action({ request, context }: Route.ActionArgs) {
     const parsed = fastSchema.safeParse({ ...obj, meals: form.getAll("meals").map(String) });
     if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Check the fast details." };
     const [f] = await db.insert(schema.fasts).values({ ...parsed.data, createdBy: user.id }).returning({ id: schema.fasts.id });
-    throw redirect(`/fasts/${f.id}`);
+    // Open the new fast in the same place (inside አባላት ጉዳይ, ጽህፈት ቤት, or on its own)
+    throw redirect(`${new URL(request.url).pathname.replace(/\/+$/, "")}/${f.id}`);
   }
 
   // Members register themselves
@@ -123,7 +124,7 @@ export default function Fasts({ loaderData, actionData }: Route.ComponentProps) 
                   ) : (
                     <Link to={`/fasts/${f.id}/join`} className="btn btn-primary btn-sm">Register</Link>
                   ))}
-                {canScan && <Link to={`/fasts/${f.id}`} className="btn btn-quiet btn-sm">Manage</Link>}
+                {canScan && <Link to={f.id} relative="path" className="btn btn-quiet btn-sm">Manage</Link>}
                 {canScan && f.isOn && <Link to={`/fasts/${f.id}/scan`} className="btn btn-primary btn-sm">Scan</Link>}
               </div>
             </li>
@@ -149,7 +150,7 @@ export default function Fasts({ loaderData, actionData }: Route.ComponentProps) 
               <div className="checks" lang={lang}>
                 {MEALS.map((m) => (
                   <label key={m}>
-                    <input type="checkbox" name="meals" value={m} defaultChecked={m === "lunch"} /> {MEAL_LABELS[m][lang]} ({MEAL_LABELS[m].en})
+                    <input type="checkbox" name="meals" value={m} defaultChecked /> {MEAL_LABELS[m][lang]} ({MEAL_LABELS[m].en})
                   </label>
                 ))}
               </div>

@@ -14,6 +14,8 @@ import {
   attendanceRate,
   BATCH_DEPT,
   canListMembers,
+  canSeeLanguages,
+  LANGUAGE_DEPT,
   canManageDepartment,
   canManageDues,
   MEMBER_AFFAIRS,
@@ -80,7 +82,10 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
   }
   if (dept.id === BATCH_DEPT) {
     if (canManageDues(user.role, leaderOf)) tools.push({ to: `${base}/dues`, label: "Contributions", icon: "💳" });
-    if (can(user.role, "attendance:fellowship")) tools.push({ to: `${base}/attendance`, label: "Fellowship attendance", icon: "✅" });
+    if (can(user.role, "attendance:fellowship")) tools.push({ to: `${base}/attendance`, label: "Attendance", icon: "✅" });
+  }
+  if (dept.id === LANGUAGE_DEPT && canSeeLanguages(user.role, leaderOf)) {
+    tools.push({ to: `${base}/languages`, label: "Members by language", icon: "🗣️" });
   }
   // አባላት ጉዳይ opens on the whole fellowship's members list
   const url = new URL(request.url);
@@ -247,7 +252,8 @@ export default function Department({ loaderData, actionData }: Route.ComponentPr
   // Members and join requests are the count buttons below; the panel only switches pages
   const groups: PanelGroup[] = [
     { label: "Fellowship", items: tools },
-    { label: "Department", items: [{ to: `${base}?tab=attendance`, label: "Attendance", icon: "✅" }] },
+    // ባች እና ዲፓርትመንት takes the whole fellowship's attendance, so it needs only that one
+    { label: "Department", items: tools.some((t) => t.to.endsWith("/attendance")) ? [] : [{ to: `${base}?tab=attendance`, label: "Attendance", icon: "✅" }] },
   ];
   return (
     <section className="page wide panel-page">

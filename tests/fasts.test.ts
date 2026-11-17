@@ -69,7 +69,7 @@ describe("cafe rules", () => {
   });
 });
 
-import { fastDays, FAST_TYPE_MEALS, mealsFor, pickFastDay } from "../app/lib/fasts";
+import { dailyLimitReached, fastDays, FAST_TYPE_MEALS, mealsFor, pickFastDay } from "../app/lib/fasts";
 
 describe("fast types", () => {
   it("gives each type its meals", () => {
@@ -78,12 +78,13 @@ describe("fast types", () => {
     expect(mealsFor(["lunch", "dinner"], "dinner_only")).toEqual(["dinner"]);
   });
 
-  it("refuses a meal the student fasts from", () => {
-    const ok = { memberFound: true, memberActive: true, registered: true, fastIsOn: true, mealAllowed: true };
-    expect(checkinDecision({ ...ok, fastType: "no_breakfast", meal: "breakfast" })).toEqual({ kind: "skips_meal", fastType: "no_breakfast" });
-    expect(checkinDecision({ ...ok, fastType: "dinner_only", meal: "lunch" })?.kind).toBe("skips_meal");
-    expect(checkinDecision({ ...ok, fastType: "dinner_only", meal: "dinner" })).toBeNull();
-    expect(checkinDecision({ ...ok, fastType: "meat_only", meal: "breakfast" })).toBeNull();
+  it("counts any meal towards the daily number (3, 2 or 1)", () => {
+    expect(dailyLimitReached("dinner_only", 0)).toBe(false);
+    expect(dailyLimitReached("dinner_only", 1)).toBe(true);
+    expect(dailyLimitReached("no_breakfast", 1)).toBe(false);
+    expect(dailyLimitReached("no_breakfast", 2)).toBe(true);
+    expect(dailyLimitReached("meat_only", 2)).toBe(false);
+    expect(dailyLimitReached("meat_only", 3)).toBe(true);
   });
 
   it("lists the fast's days and keeps the daily table inside them", () => {

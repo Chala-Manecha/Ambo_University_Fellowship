@@ -1,4 +1,5 @@
 import { eq } from "drizzle-orm";
+import { BackLink } from "../components/BackLink";
 import { Link } from "react-router";
 import { renderSVG } from "uqr";
 import type { Route } from "./+types/fasts.$id.poster";
@@ -27,7 +28,7 @@ export default function Poster({ loaderData }: Route.ComponentProps) {
   return (
     <section className="poster">
       <p className="no-print muted">
-        <Link to={`/fasts/${fast.id}`}>← Back</Link> · <button type="button" className="btn btn-primary btn-sm" onClick={() => window.print()}>🖨 Print</button>
+        <BackLink fallback={`/fasts/${fast.id}`} /> · <button type="button" className="btn btn-primary btn-sm" onClick={() => window.print()}>🖨 Print</button>
       </p>
       <p className="poster-org" lang="am">{HOME.am.header}</p>
       <p className="poster-org" lang="om">{HOME.om.header}</p>

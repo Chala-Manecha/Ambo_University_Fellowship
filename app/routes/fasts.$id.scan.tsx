@@ -5,12 +5,13 @@ import type { Route } from "./+types/fasts.$id.scan";
 import type { loader as rootLoader } from "../root";
 import { getDb, schema } from "../db";
 import { todayInAddis } from "../lib/departments";
-import { addisHour, defaultMeal, FAST_TYPE_LABELS, isFastOn, isMeal, MEAL_LABELS, type CheckinResult, type Meal } from "../lib/fasts";
-import { checkIn, loadRegistrants, type CheckinResponse } from "../lib/fasts.server";
+import { addisHour, defaultMeal, isFastOn, isMeal, MEAL_LABELS, type CheckinResult, type Meal } from "../lib/fasts";
+import { canScanFast, checkIn, loadRegistrants, type CheckinResponse } from "../lib/fasts.server";
 import { matchesSearch } from "../lib/dashboard";
 import { DEFAULT_LANG } from "../lib/lang";
 import { verifyMemberQr } from "../lib/member-qr";
-import { requirePermission } from "../lib/session.server";
+import { requireUser } from "../lib/session.server";
+import { BackLink } from "../components/BackLink";
 
 export function meta() {
   return [{ title: "Scanner · Gibi Gubae" }];
@@ -18,10 +19,11 @@ export function meta() {
 
 export async function loader({ request, params, context }: Route.LoaderArgs) {
   const { env } = context.cloudflare;
-  await requirePermission(request, env, "fast:scan");
+  const user = await requireUser(request, env);
   const db = getDb(env.DB);
   const fast = await db.query.fasts.findFirst({ where: eq(schema.fasts.id, params.id) });
   if (!fast) throw new Response("Fast not found", { status: 404 });
+  if (!(await canScanFast(db, user, fast.id))) throw new Response("You aren't a scanner for this fast.", { status: 403 });
   const today = todayInAddis();
   const served = await db
     .select({ meal: schema.fastCheckins.meal, n: count() })
@@ -43,10 +45,11 @@ export type ScanResponse = CheckinResponse;
 /** One check-in: from a scanned QR (`code`) or from the search list (`memberId`). */
 export async function action({ request, params, context }: Route.ActionArgs): Promise<ScanResponse> {
   const { env } = context.cloudflare;
-  const scanner = await requirePermission(request, env, "fast:scan");
+  const scanner = await requireUser(request, env);
   const db = getDb(env.DB);
   const fast = await db.query.fasts.findFirst({ where: eq(schema.fasts.id, params.id) });
   if (!fast) throw new Response("Fast not found", { status: 404 });
+  if (!(await canScanFast(db, scanner, fast.id))) throw new Response("You aren't a scanner for this fast.", { status: 403 });
   const form = await request.formData();
   const meal = form.get("meal");
   if (!isMeal(meal)) return { kind: "invalid" };
@@ -64,7 +67,7 @@ const RESULT_TEXT: Record<CheckinResult["kind"], { title: string; tone: "ok" | "
   inactive: { title: "Membership not active", tone: "bad" },
   not_today: { title: "This fast isn't on today", tone: "bad" },
   wrong_meal: { title: "This meal isn't served in this fast", tone: "bad" },
-  skips_meal: { title: "Fasting from this meal", tone: "bad" },
+  limit: { title: "USED TODAY'S LIMIT", tone: "bad" },
   invalid: { title: "Not a fellowship QR code", tone: "bad" },
 };
 
@@ -158,7 +161,7 @@ export default function Scanner({ loaderData }: Route.ComponentProps) {
 
   return (
     <section className="page narrow scanner">
-      <p className="muted"><Link to={`/fasts/${fast.id}`}>← {fast.name}</Link></p>
+      <p className="muted"><BackLink fallback="/account" label={fast.name} /></p>
       <h1>Scanner</h1>
       {!isOn && <p className="form-error">This fast isn't on today. Scans will be refused.</p>}
 
@@ -192,7 +195,7 @@ export default function Scanner({ loaderData }: Route.ComponentProps) {
                 <span>{shown.person.fullName}<br /><small>{shown.person.studentId}</small></span>
               </span>
             )}
-            {shown.kind === "skips_meal" && <small lang={lang}>{FAST_TYPE_LABELS[shown.fastType][lang]}</small>}
+            {shown.kind === "limit" && <small>{shown.perDay} meal{shown.perDay === 1 ? "" : "s"} a day · already eaten today</small>}
             {shown.kind === "already" && (
               <small>at {new Date(shown.at).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: "Africa/Addis_Ababa" })}</small>
             )}

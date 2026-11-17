@@ -93,7 +93,7 @@ export type CheckinResult =
   | { kind: "inactive" }
   | { kind: "not_today" }
   | { kind: "wrong_meal" }
-  | { kind: "skips_meal"; fastType: FastType }
+  | { kind: "limit"; fastType: FastType; perDay: number }
   | { kind: "invalid" };
 
 /**
@@ -116,8 +116,16 @@ export function checkinDecision(input: {
   if (!input.mealAllowed) return { kind: "wrong_meal" };
   if (!input.memberActive) return { kind: "inactive" };
   if (!input.registered) return { kind: "not_registered" };
-  if (input.fastType && input.meal && !FAST_TYPE_MEALS[input.fastType].includes(input.meal)) {
-    return { kind: "skips_meal", fastType: input.fastType };
-  }
   return null; // go ahead and record; the database decides "ok" vs "already"
+}
+
+/** At most 4 people may open the scanner for one fast (besides admins and cafe coordinators). */
+export const MAX_SCANNERS = 4;
+
+/**
+ * The cafe serves all three meals; each student has a number of meals a day (3, 2 or 1).
+ * Any meal counts. Returns true once they've had today's number.
+ */
+export function dailyLimitReached(fastType: FastType, eatenToday: number) {
+  return eatenToday >= MEALS_PER_DAY[fastType];
 }

@@ -644,3 +644,19 @@ table tbody tr:hover td { background: var(--table-hover); }
 .photo-empty { display: grid; place-items: center; font-size: 2.2rem; background: #eef1f6; }
 .photo-pick { cursor: pointer; }
 .page.panel-page { padding-top: 0.6rem; }
+
+/* ---------- Page header inside a panel (a fast) ---------- */
+.sub-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.2rem 0.7rem; margin: 0 0 0.6rem; }
+.sub-head h2 { margin: 0; font-size: 1.2rem; }
+.sub-back { flex-basis: 100%; font-weight: 700; text-decoration: none; font-size: 0.85rem; }
+.sub-actions { display: flex; gap: 0.35rem; margin-left: auto; }
+.meal-cell.is-full { background: #f1f1f4; color: #9a9caa; cursor: not-allowed; }
+.scan-cta { display: block; text-align: center; margin: 0 0 0.75rem; padding: 0.8rem; font-size: 1.05rem; }
+
+/* ---------- After registration: open the bot ---------- */
+.welcome-bot { display: grid; gap: 0.6rem; text-align: center; padding: 1.4rem 1.1rem; }
+.welcome-bot h1 { margin: 0; font-size: 1.5rem; }
+.welcome-bot ol { text-align: left; margin: 0.2rem 0; padding-left: 1.2rem; }
+.welcome-done { margin: 0; color: #1d6b3f; font-weight: 700; }
+.welcome-bot-name { margin: 0; font-size: 1.2rem; font-weight: 700; color: var(--bar-1); }
+.welcome-open { font-size: 1.1rem; padding: 0.8rem; }

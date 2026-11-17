@@ -26,6 +26,12 @@ export function isPosition(v: unknown): v is Position {
 /** Departments with fellowship-wide jobs (ids from migration 0002). */
 export const MEMBER_AFFAIRS = "miseensa"; // አባላት ጉዳይ
 export const BATCH_DEPT = "baachii"; // ባች እና ዲፓርትመንት
+export const LANGUAGE_DEPT = "afaan"; // ቋንቋ እና ልዩ ፍላጎት
+
+/** Members by preferred language (Afaan Oromoo / አማርኛ): admins and ቋንቋ እና ልዩ ፍላጎት leaders. */
+export function canSeeLanguages(role: Role, leaderOf: readonly string[]) {
+  return role === "admin" || leaderOf.includes(LANGUAGE_DEPT);
+}
 
 /** The full members list (all details): admins and leaders of አባላት ጉዳይ or ባች እና ዲፓርትመንት. */
 export function canListMembers(role: Role, leaderOf: readonly string[]) {

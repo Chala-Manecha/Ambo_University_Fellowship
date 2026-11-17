@@ -2,7 +2,6 @@ import { and, eq, sql } from "drizzle-orm";
 import { Form, Link, redirect, useNavigation, useRouteLoaderData, useSearchParams } from "react-router";
 import type { Route } from "./+types/fasts.$id";
 import type { loader as rootLoader } from "../root";
-import { PageHead } from "../components/Dash";
 import { Counts } from "../components/Panel";
 import { getDb, schema } from "../db";
 import { countBy, matchesSearch, pickParam } from "../lib/dashboard";
@@ -12,6 +11,7 @@ import { formatEc } from "../lib/ethiopian-date";
 import {
   FAST_TYPE_LABELS,
   FAST_TYPES,
+  MAX_SCANNERS,
   MEALS_PER_DAY,
   fastDays,
   isFastOn,
@@ -31,11 +31,21 @@ export function meta() {
   return [{ title: "Fast · Gibi Gubae" }];
 }
 
+/** Inside a panel the URL is …/fasts/:fastId (the panel's own :id is the department); alone it's /fasts/:id. */
+function fastIdOf(params: Record<string, string | undefined>) {
+  return params.fastId ?? params.id ?? "";
+}
+
+/** The fasts list this page sits under: /departments/miseensa/fasts, /office/fasts or /fasts. */
+function listPath(url: string) {
+  return new URL(url).pathname.replace(/\/[^/]+\/?$/, "");
+}
+
 export async function loader({ request, params, context }: Route.LoaderArgs) {
   const { env } = context.cloudflare;
   const user = await requirePermission(request, env, "fast:scan");
   const db = getDb(env.DB);
-  const fast = await db.query.fasts.findFirst({ where: eq(schema.fasts.id, params.id) });
+  const fast = await db.query.fasts.findFirst({ where: eq(schema.fasts.id, fastIdOf(params)) });
   if (!fast) throw new Response("Fast not found", { status: 404 });
   const today = todayInAddis();
   const day = pickFastDay(fast, new URL(request.url).searchParams.get("day"), today);
@@ -57,6 +67,23 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
     .from(schema.fastCheckins)
     .where(and(eq(schema.fastCheckins.fastId, fast.id), eq(schema.fastCheckins.date, day)));
   const eatenSet = new Set(eaten.map((e) => `${e.memberId}:${e.meal}`));
+  const todayCount = new Map<string, number>();
+  for (const e of eaten) todayCount.set(e.memberId, (todayCount.get(e.memberId) ?? 0) + 1);
+  const canManage = can(user.role, "fast:manage");
+  const [scanners, activeMembers] = canManage
+    ? await Promise.all([
+        db
+          .select({ memberId: schema.fastScanners.memberId, fullName: schema.members.fullName, studentId: schema.members.studentId })
+          .from(schema.fastScanners)
+          .innerJoin(schema.members, eq(schema.members.id, schema.fastScanners.memberId))
+          .where(eq(schema.fastScanners.fastId, fast.id)),
+        db
+          .select({ memberId: schema.members.id, fullName: schema.members.fullName, studentId: schema.members.studentId })
+          .from(schema.members)
+          .where(eq(schema.members.status, "active"))
+          .orderBy(schema.members.fullName),
+      ])
+    : [[], []];
 
   return {
     fast,
@@ -67,15 +94,18 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
     nextDay: i >= 0 && i < days.length - 1 ? days[i + 1] : null,
     dayNumber: i + 1,
     totalDays: days.length,
-    canManage: can(user.role, "fast:manage"),
+    canManage,
+    listPath: listPath(request.url),
+    scanners,
+    activeMembers,
     registrants: registrants.map((r) => ({
       ...r,
       registeredAt: r.registeredAt.getTime(),
       eatenTotal: totalBy.get(r.memberId)?.meals ?? 0,
+      eatenToday: todayCount.get(r.memberId) ?? 0,
       daysTotal: totalBy.get(r.memberId)?.days ?? 0,
-      meals: Object.fromEntries(
-        fast.meals.map((m) => [m, mealsFor(fast.meals, r.fastType).includes(m) ? eatenSet.has(`${r.memberId}:${m}`) : null]),
-      ) as Partial<Record<Meal, boolean | null>>, // true eaten, false not yet, null fasting from it
+      // Any meal counts towards their number a day
+      meals: Object.fromEntries(fast.meals.map((m) => [m, eatenSet.has(`${r.memberId}:${m}`)])) as Partial<Record<Meal, boolean>>,
     })),
   };
 }
@@ -84,7 +114,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   const { env } = context.cloudflare;
   const user = await requirePermission(request, env, "fast:scan");
   const db = getDb(env.DB);
-  const fast = await db.query.fasts.findFirst({ where: eq(schema.fasts.id, params.id) });
+  const fast = await db.query.fasts.findFirst({ where: eq(schema.fasts.id, fastIdOf(params)) });
   if (!fast) throw new Response("Fast not found", { status: 404 });
   const form = await request.formData();
   const intent = form.get("intent");
@@ -114,6 +144,21 @@ export async function action({ request, params, context }: Route.ActionArgs) {
 
   if (!can(user.role, "fast:manage")) throw new Response("Only admins can change registrations.", { status: 403 });
 
+  // Up to 4 members may open the scanner for this fast
+  if (intent === "add-scanner" || intent === "remove-scanner") {
+    const memberId = String(form.get("memberId") ?? "");
+    if (intent === "remove-scanner") {
+      await db.delete(schema.fastScanners).where(and(eq(schema.fastScanners.fastId, fast.id), eq(schema.fastScanners.memberId, memberId)));
+      return { message: "Scanner removed." };
+    }
+    const member = await db.query.members.findFirst({ where: and(eq(schema.members.id, memberId), eq(schema.members.status, "active")), columns: { id: true, fullName: true } });
+    if (!member) return { message: "Choose a member." };
+    const [{ n }] = await db.select({ n: sql<number>`count(*)` }).from(schema.fastScanners).where(eq(schema.fastScanners.fastId, fast.id));
+    if (n >= MAX_SCANNERS) return { message: `A fast can have at most ${MAX_SCANNERS} scanners. Remove one first.` };
+    await db.insert(schema.fastScanners).values({ fastId: fast.id, memberId: member.id, addedBy: user.id }).onConflictDoNothing();
+    return { message: `${member.fullName} can now open the scanner (from their dashboard).` };
+  }
+
   if (intent === "add") {
     const studentId = String(form.get("studentId") ?? "").trim();
     const fastType = form.get("fastType");
@@ -137,7 +182,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   }
   if (intent === "delete") {
     await db.delete(schema.fasts).where(eq(schema.fasts.id, fast.id));
-    throw redirect("/fasts");
+    throw redirect(listPath(request.url));
   }
   throw new Response("Unknown action", { status: 400 });
 }
@@ -150,7 +195,7 @@ export default function FastPage({ loaderData, actionData }: Route.ComponentProp
   const nav = useNavigation();
   const busy = nav.state !== "idle";
   const [params] = useSearchParams();
-  const { fast, isOn, today, day, prevDay, nextDay, dayNumber, totalDays, canManage, registrants } = loaderData;
+  const { fast, isOn, today, day, prevDay, nextDay, dayNumber, totalDays, canManage, registrants, scanners, activeMembers, listPath } = loaderData;
   const tab = pickParam(params.get("tab"), TABS) ?? "registered";
   const type = pickParam(params.get("type"), FAST_TYPES);
   const q = params.get("q") ?? "";
@@ -163,26 +208,21 @@ export default function FastPage({ loaderData, actionData }: Route.ComponentProp
     return `?${p.toString()}`;
   };
 
-  // Daily numbers: eaten / expected for each meal
-  const mealTotals = fast.meals.map((m) => ({
-    meal: m,
-    eaten: rows.filter((r) => r.meals[m] === true).length,
-    expected: rows.filter((r) => r.meals[m] !== null && r.meals[m] !== undefined).length,
-  }));
+  // Daily numbers: meals served today, and people who've had their number
+  const mealTotals = fast.meals.map((m) => ({ meal: m, eaten: rows.filter((r) => r.meals[m] === true).length }));
+  const done = rows.filter((r) => r.eatenToday >= MEALS_PER_DAY[r.fastType]).length;
 
   return (
     <section className="page wide">
-      <PageHead
-        back={{ to: "/fasts", label: "Fasts" }}
-        title={fast.name}
-        sub={<span lang={lang}>{formatEc(fast.startDate, lang)} – {formatEc(fast.endDate, lang)}</span>}
-        actions={
-          <>
-            {isOn && <Link to={`/fasts/${fast.id}/scan`}>📷 Scanner</Link>}
-            {canManage && <Link to={`/fasts/${fast.id}/poster`}>🖨 Poster</Link>}
-          </>
-        }
-      />
+      <div className="sub-head">
+        <Link to={listPath} className="sub-back">← All fasts</Link>
+        <h2>{fast.name}</h2>
+        <span className="muted" lang={lang}>{formatEc(fast.startDate, lang)} – {formatEc(fast.endDate, lang)}</span>
+        <span className="sub-actions">
+          {isOn && <Link to={`/fasts/${fast.id}/scan`} className="btn btn-primary btn-sm">📷 Scanner</Link>}
+          {canManage && <Link to={`/fasts/${fast.id}/poster`} className="btn btn-quiet btn-sm">🖨 Poster</Link>}
+        </span>
+      </div>
       {actionData?.message && <p className="notice" role="status">{actionData.message}</p>}
 
       <nav className="seg-tabs" aria-label="View">
@@ -283,7 +323,10 @@ export default function FastPage({ loaderData, actionData }: Route.ComponentProp
             {nextDay ? <Link to={keep({ day: nextDay })} className="btn btn-quiet btn-sm" preventScrollReset>Next →</Link> : <span className="btn btn-quiet btn-sm" aria-disabled="true">Next →</span>}
           </div>
           <Counts
-            items={mealTotals.map((t) => ({ to: keep({}), n: t.eaten, label: `/ ${t.expected} ${MEAL_LABELS[t.meal].en}` }))}
+            items={[
+              ...mealTotals.map((t) => ({ to: keep({}), n: t.eaten, label: MEAL_LABELS[t.meal].en })),
+              { to: keep({}), n: done, label: `of ${rows.length} reached their number` },
+            ]}
           />
           {rows.length === 0 ? (
             <p className="muted">Nobody to show.</p>
@@ -303,8 +346,8 @@ export default function FastPage({ loaderData, actionData }: Route.ComponentProp
                       <td><strong>{r.fullName}</strong></td>
                       <td className="num muted">{MEALS_PER_DAY[r.fastType]}</td>
                       {fast.meals.map((m) => {
-                        const v = r.meals[m];
-                        if (v === null || v === undefined) return <td key={m} className="meal-col meal-skip" title="Fasting from this meal">—</td>;
+                        const v = r.meals[m] === true;
+                        const full = !v && r.eatenToday >= MEALS_PER_DAY[r.fastType];
                         return (
                           <td key={m} className="meal-col">
                             <Form method="post" preventScrollReset>
@@ -312,8 +355,13 @@ export default function FastPage({ loaderData, actionData }: Route.ComponentProp
                               <input type="hidden" name="memberId" value={r.memberId} />
                               <input type="hidden" name="meal" value={m} />
                               <input type="hidden" name="day" value={day} />
-                              <button className={`meal-cell${v ? " is-eaten" : ""}`} disabled={busy} aria-label={`${r.fullName} ${MEAL_LABELS[m].en}: ${v ? "ate (tap to undo)" : "not yet (tap to mark)"}`}>
-                                {v ? "✓" : ""}
+                              <button
+                                className={`meal-cell${v ? " is-eaten" : ""}${full ? " is-full" : ""}`}
+                                disabled={busy || full}
+                                title={full ? "Used today's limit" : undefined}
+                                aria-label={`${r.fullName} ${MEAL_LABELS[m].en}: ${v ? "ate (tap to undo)" : full ? "used today's limit" : "not yet (tap to mark)"}`}
+                              >
+                                {v ? "✓" : full ? "–" : ""}
                               </button>
                             </Form>
                           </td>
@@ -326,6 +374,40 @@ export default function FastPage({ loaderData, actionData }: Route.ComponentProp
             </div>
           )}
         </>
+      )}
+
+      {canManage && (
+        <div className="card roles-card">
+          <h2>Scanners <small className="muted">— up to {MAX_SCANNERS} members who open the cafe scanner for this fast</small></h2>
+          <div className="assign-row">
+            <div className="assign-what">
+              {scanners.length ? (
+                scanners.map((sc) => (
+                  <span key={sc.memberId} className="assign-holder">
+                    {sc.fullName}
+                    <Form method="post" preventScrollReset>
+                      <input type="hidden" name="intent" value="remove-scanner" />
+                      <input type="hidden" name="memberId" value={sc.memberId} />
+                      <button className="link-btn" disabled={busy} aria-label={`Remove ${sc.fullName}`}>✕</button>
+                    </Form>
+                  </span>
+                ))
+              ) : <span className="muted">No scanners yet</span>}
+            </div>
+            {scanners.length < MAX_SCANNERS && (
+              <Form method="post" className="assign" preventScrollReset>
+                <input type="hidden" name="intent" value="add-scanner" />
+                <select name="memberId" required defaultValue="" aria-label="Choose a member">
+                  <option value="" disabled>Choose a member…</option>
+                  {activeMembers.filter((m) => !scanners.some((sc) => sc.memberId === m.memberId)).map((m) => (
+                    <option key={m.memberId} value={m.memberId}>{m.fullName} · {m.studentId}</option>
+                  ))}
+                </select>
+                <button className="btn btn-primary btn-sm" disabled={busy}>Add</button>
+              </Form>
+            )}
+          </div>
+        </div>
       )}
 
       {canManage && (

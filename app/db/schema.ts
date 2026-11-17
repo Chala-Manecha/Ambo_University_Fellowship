@@ -242,6 +242,22 @@ export const fastCheckins = sqliteTable(
   (t) => [primaryKey({ columns: [t.fastId, t.memberId, t.date, t.meal] }), index("fast_checkins_fast_date_idx").on(t.fastId, t.date)],
 );
 
+/** Members allowed to open the cafe scanner for one fast (at most 4, see lib/fasts.ts). */
+export const fastScanners = sqliteTable(
+  "fast_scanners",
+  {
+    fastId: text("fast_id")
+      .notNull()
+      .references(() => fasts.id, { onDelete: "cascade" }),
+    memberId: text("member_id")
+      .notNull()
+      .references(() => members.id, { onDelete: "cascade" }),
+    addedBy: text("added_by").references(() => user.id, { onDelete: "set null" }),
+    ...timestamps,
+  },
+  (t) => [primaryKey({ columns: [t.fastId, t.memberId] }), index("fast_scanners_member_idx").on(t.memberId)],
+);
+
 export type Fast = typeof fasts.$inferSelect;
 
 /** Wrong-password lockout per student ID (see lib/login-limit.ts). */
