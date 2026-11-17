@@ -20,6 +20,7 @@ export async function loadMemberList(db: Db): Promise<MemberListRow[]> {
       services: schema.members.services,
       otherService: schema.members.otherService,
       learning: schema.members.learning,
+      photoKey: schema.members.photoKey,
       status: schema.members.status,
     })
     .from(schema.members)
@@ -33,5 +34,5 @@ export async function loadMemberList(db: Db): Promise<MemberListRow[]> {
   const byMember = new Map<string, string[]>();
   for (const m of memberships) byMember.set(m.memberId, [...(byMember.get(m.memberId) ?? []), m.departmentId]);
 
-  return rows.map((r) => ({ ...r, departments: byMember.get(r.id) ?? [] }));
+  return rows.map(({ photoKey, ...r }) => ({ ...r, hasPhoto: Boolean(photoKey), departments: byMember.get(r.id) ?? [] }));
 }

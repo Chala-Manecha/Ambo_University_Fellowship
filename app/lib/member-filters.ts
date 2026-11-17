@@ -18,6 +18,7 @@ export type MemberListRow = {
   otherService: string | null;
   learning: string[] | null;
   status: "pending" | "active" | "rejected" | "alumni";
+  hasPhoto?: boolean;
   departments: string[]; // ids of departments they actively belong to
 };
 

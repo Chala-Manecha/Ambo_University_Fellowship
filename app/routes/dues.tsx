@@ -2,7 +2,6 @@ import { and, eq } from "drizzle-orm";
 import { Form, Link, useNavigation, useRouteLoaderData, useSearchParams } from "react-router";
 import type { Route } from "./+types/dues";
 import type { loader as rootLoader } from "../root";
-import { Chips, PageHead, TabBar, Tile, Tiles } from "../components/Dash";
 import { getDb, schema } from "../db";
 import { requireDues } from "../lib/access.server";
 import {
@@ -25,8 +24,6 @@ import { getDues, getPayAccount, setSetting } from "../lib/settings.server";
 export function meta() {
   return [{ title: "Contributions · Gibi Gubae" }];
 }
-
-const TABS = ["review", "month", "settings"] as const;
 
 function parseMonth(v: string | null, fallback: EcMonth): EcMonth {
   const m = v?.match(/^(\d{4})-(\d{1,2})$/);
@@ -115,7 +112,6 @@ export default function Dues({ loaderData, actionData }: Route.ComponentProps) {
   const busy = useNavigation().state !== "idle";
   const [params] = useSearchParams();
   const { month, current, prev, next, pending, rows, collected, dues, account } = loaderData;
-  const tab = pickParam(params.get("tab"), TABS) ?? (pending.length ? "review" : "month");
   const status = pickParam(params.get("status"), ["approved", "pending", "unpaid"] as const);
   const kind = pickParam(params.get("kind"), ["student", "graduate"] as const);
   const q = params.get("q") ?? "";
@@ -129,125 +125,121 @@ export default function Dues({ loaderData, actionData }: Route.ComponentProps) {
     for (const [k, v] of Object.entries(extra)) (v === null ? p.delete(k) : p.set(k, v));
     return `?${p.toString()}`;
   };
+  // Payments waiting in other months: a link to the first one
+  const waitingElsewhere = pending.filter((p) => !p.months.some(([y, m]) => y === month.year && m === month.month));
+  const firstOther = waitingElsewhere[0]?.months[0];
+  const submitOnChange = (e: React.ChangeEvent<HTMLSelectElement>) => e.currentTarget.form?.requestSubmit();
 
   return (
     <section className="page wide">
-      <PageHead back={{ to: "/dashboard", label: "Dashboard" }} title="Monthly contributions" sub={<span lang={lang}>{formatMonth(month, lang)}</span>} />
       {actionData?.message && <p className="notice" role="status">{actionData.message}</p>}
 
-      <Tiles>
-        <Tile to={keep({ tab: "review" })} n={pending.length} label="To review" tone={pending.length ? "gold" : "slate"} />
-        <Tile to={keep({ tab: "month", status: "approved" })} n={statusCounts.approved} label="Paid" tone="green" />
-        <Tile to={keep({ tab: "month", status: "pending" })} n={statusCounts.pending} label="Waiting review" tone="slate" />
-        <Tile to={keep({ tab: "month", status: "unpaid" })} n={statusCounts.unpaid} label="Not paid" tone={statusCounts.unpaid ? "red" : "slate"} />
-        <Tile to={keep({ tab: "month", status: null })} n={`${collected.toLocaleString("en-US")} birr`} label="Collected" tone="green" />
-      </Tiles>
-
-      <TabBar
-        active={tab}
-        tabs={[
-          { key: "review", to: keep({ tab: "review" }), label: "To review", icon: "🧾", count: pending.length, alert: true },
-          { key: "month", to: keep({ tab: "month" }), label: "Who paid", icon: "📅" },
-          { key: "settings", to: keep({ tab: "settings" }), label: "Amounts & account", icon: "⚙️" },
-        ]}
-      />
-
-      {tab === "review" && (
-        pending.length === 0 ? (
-          <div className="card"><p className="muted">No payments waiting. Members submit them from their dashboard.</p></div>
-        ) : (
-          <div className="review-list">
-            {pending.map((p) => {
-              const expected = p.monthlyRate * p.months.length;
-              return (
-                <div key={p.id} className="card review-item">
-                  <a href={`/receipts/${p.id}`} target="_blank" rel="noreferrer" className="receipt-thumb">
-                    <img src={`/receipts/${p.id}`}  alt={`Receipt from ${p.fullName}`} />
-                  </a>
-                  <div className="review-body">
-                    <p><strong>{p.fullName}</strong> <span className="muted">{p.studentId} · {p.memberKind === "graduate" ? "Graduated" : "Student"}</span></p>
-                    <p lang={lang}>{p.months.map(([y, m]) => formatMonth({ year: y, month: m }, lang)).join(", ")}</p>
-                    <p>
-                      <strong>{p.amount} birr</strong>{" "}
-                      {p.amount !== expected && <span className="pill pill-pending">expected {expected}</span>}
-                    </p>
-                    {p.note && <p className="row-note">“{p.note}”</p>}
-                    <Form method="post" className="row-actions review-actions">
-                      <input type="hidden" name="id" value={p.id} />
-                      <input name="reviewNote" placeholder="Note (optional, sent if rejected)" maxLength={300} />
-                      <button name="intent" value="approve" className="btn btn-primary btn-sm" disabled={busy}>Approve</button>
-                      <button name="intent" value="reject" className="btn btn-quiet btn-sm" disabled={busy}>Reject</button>
-                    </Form>
-                  </div>
-                </div>
-              );
-            })}
+      <div className="card dues-head">
+        <div className="dues-month">
+          <Link to={keep({ month: mk(prev) })} className="btn btn-quiet btn-sm" aria-label="Previous month" preventScrollReset>←</Link>
+          <div>
+            <strong lang={lang}>{formatMonth(month, lang)}</strong>
+            {monthKey(month) === monthKey(current) && <span className="muted"> · this month</span>}
+            <div className="dues-collected">Collected <b>{collected.toLocaleString("en-US")} birr</b></div>
           </div>
-        )
-      )}
-
-      {tab === "month" && (
-        <>
-          <div className="day-nav">
-            <Link to={keep({ month: mk(prev) })} className="btn btn-quiet btn-sm" preventScrollReset>← Prev</Link>
-            <div className="day-nav-label">
-              <strong lang={lang}>{formatMonth(month, lang)}</strong>
-              {monthKey(month) === monthKey(current) && <span className="muted">this month</span>}
-            </div>
-            {next ? <Link to={keep({ month: mk(next) })} className="btn btn-quiet btn-sm" preventScrollReset>Next →</Link> : <span className="btn btn-quiet btn-sm" aria-disabled="true">Next →</span>}
-          </div>
-          <div className="card filter-card">
-            <div className="filter-top">
-              <Form method="get" className="list-tools" role="search">
-                {[...params.entries()].filter(([k]) => k !== "q").map(([k, v]) => <input key={k} type="hidden" name={k} value={v} />)}
-                <input type="search" name="q" defaultValue={q} placeholder="Search name, ID, phone" aria-label="Search" />
-                <button className="btn btn-quiet btn-sm" aria-label="Search">🔍</button>
-              </Form>
-            </div>
-            <Chips label="Status" param="status" value={status} counts={statusCounts} options={[["approved", "Paid"], ["pending", "Waiting review"], ["unpaid", "Not paid"]]} />
-            <Chips label="Member" param="kind" value={kind} counts={kindCounts} options={[["student", `Students · ${dues.student} birr`], ["graduate", `Graduated · ${dues.graduate} birr`]]} />
-          </div>
-          <div className="table-wrap">
-            <table className="table-oneline">
-              <thead><tr><th>Name</th><th>Student ID</th><th>Member</th><th>Phone</th><th>Telegram</th><th>Status</th></tr></thead>
-              <tbody>
-                {shown.map((r) => (
-                  <tr key={r.id}>
-                    <td><strong>{r.fullName}</strong></td>
-                    <td>{r.studentId}</td>
-                    <td>{r.kind === "graduate" ? "Graduated" : "Student"}</td>
-                    <td>{r.phone ? <a href={`tel:${r.phone}`}>{r.phone}</a> : "—"}</td>
-                    <td>{r.telegramUsername ? <a href={`https://t.me/${r.telegramUsername}`} target="_blank" rel="noreferrer">@{r.telegramUsername}</a> : "—"}</td>
-                    <td><span className={`pill pill-pay-${r.status}`}>{STATUS_LABEL[r.status]}</span></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </>
-      )}
-
-      {tab === "settings" && (
-        <div className="card">
+          {next ? <Link to={keep({ month: mk(next) })} className="btn btn-quiet btn-sm" aria-label="Next month" preventScrollReset>→</Link> : <span className="btn btn-quiet btn-sm" aria-disabled="true">→</span>}
+        </div>
+        <details className="dues-settings">
+          <summary>
+            Students <b>{dues.student} birr</b> · Graduated <b>{dues.graduate} birr</b> · {account.number ? <>{account.bank} <b>{account.number}</b> ({account.name})</> : <span className="pill pill-pay-unpaid">No account set</span>} <span className="dues-edit">✏️ Edit</span>
+          </summary>
           <Form method="post" className="form">
             <input type="hidden" name="intent" value="settings" />
-            <h2>Monthly amount (birr)</h2>
             <div className="date-pair">
-              <label className="field"><span>Students</span><input name="student" type="number" min={0} max={10000} required defaultValue={dues.student} /></label>
-              <label className="field"><span>Graduated</span><input name="graduate" type="number" min={0} max={10000} required defaultValue={dues.graduate} /></label>
+              <label className="field"><span>Students (birr / month)</span><input name="student" type="number" min={0} max={10000} required defaultValue={dues.student} /></label>
+              <label className="field"><span>Graduated (birr / month)</span><input name="graduate" type="number" min={0} max={10000} required defaultValue={dues.graduate} /></label>
             </div>
-            <h2>Fellowship account</h2>
-            <p className="muted">Members see this on their dashboard when they pay.</p>
             <div className="date-pair">
               <label className="field"><span>Bank / service</span><input name="bank" maxLength={60} defaultValue={account.bank} placeholder="CBE / Telebirr" /></label>
               <label className="field"><span>Account number</span><input name="number" maxLength={40} defaultValue={account.number} /></label>
             </div>
             <label className="field"><span>Account name</span><input name="name" maxLength={80} defaultValue={account.name} /></label>
             <label className="field"><span>Note <small>Optional</small></span><input name="note" maxLength={200} defaultValue={account.note} placeholder="e.g. write your student ID in the reason" /></label>
-            <button className="btn btn-primary" disabled={busy}>Save</button>
+            <button className="btn btn-primary btn-sm" disabled={busy}>Save</button>
           </Form>
-        </div>
+        </details>
+      </div>
+
+      {firstOther && (
+        <p className="notice">
+          {waitingElsewhere.length} payment{waitingElsewhere.length === 1 ? "" : "s"} waiting for review in other months.{" "}
+          <Link to={keep({ month: `${firstOther[0]}-${firstOther[1]}`, status: "pending" })}>Show</Link>
+        </p>
       )}
+
+      <Form method="get" className="card filter-bar" role="search">
+        <input type="hidden" name="month" value={mk(month)} />
+        <input type="search" name="q" defaultValue={q} placeholder="🔍 Name, ID, phone" aria-label="Search" className="filter-q" />
+        <select name="status" defaultValue={status ?? ""} onChange={submitOnChange} aria-label="Status">
+          <option value="">All ({statusCounts.all})</option>
+          <option value="approved">Paid ({statusCounts.approved})</option>
+          <option value="pending">Waiting review ({statusCounts.pending})</option>
+          <option value="unpaid">Not paid ({statusCounts.unpaid})</option>
+        </select>
+        <select name="kind" defaultValue={kind ?? ""} onChange={submitOnChange} aria-label="Member">
+          <option value="">Everyone ({kindCounts.all})</option>
+          <option value="student">Students ({kindCounts.student})</option>
+          <option value="graduate">Graduated ({kindCounts.graduate})</option>
+        </select>
+        <button className="btn btn-primary btn-sm">Filter</button>
+      </Form>
+
+      <div className="card table-card">
+        <div className="table-bar"><strong>{shown.length} {shown.length === 1 ? "member" : "members"}</strong></div>
+        {shown.length === 0 ? (
+          <p className="muted table-empty">Nobody matches.</p>
+        ) : (
+          <div className="table-wrap">
+            <table className="table-oneline">
+              <thead><tr><th>Member</th><th>Status</th><th>Payment</th><th>Phone</th><th>Telegram</th></tr></thead>
+              <tbody>
+                {shown.map((r) => (
+                  <tr key={r.id}>
+                    <td><strong>{r.fullName}</strong><span className="who-id">{r.studentId} · {r.kind === "graduate" ? "Graduated" : "Student"}</span></td>
+                    <td><span className={`pill pill-pay-${r.status}`}>{STATUS_LABEL[r.status]}</span></td>
+                    <td>
+                      {r.payment ? (
+                        <span className="pay-cell">
+                          <a href={`/receipts/${r.payment.id}`} target="_blank" rel="noreferrer">🧾 {r.payment.amount} birr</a>
+                          {r.payment.months.length > 1 && <span className="muted" lang={lang}> · {r.payment.months.length} months</span>}
+                          {r.status === "pending" && (
+                            <Form method="post" className="row-actions" preventScrollReset>
+                              <input type="hidden" name="id" value={r.payment.id} />
+                              <button name="intent" value="approve" className="btn btn-primary btn-sm" disabled={busy}>Approve</button>
+                              <button
+                                name="intent"
+                                value="reject"
+                                className="btn btn-quiet btn-sm"
+                                disabled={busy}
+                                onClick={(e) => {
+                                  const note = window.prompt("Reason (sent to the member, optional):");
+                                  if (note === null) return e.preventDefault();
+                                  const input = e.currentTarget.form?.elements.namedItem("reviewNote") as HTMLInputElement | null;
+                                  if (input) input.value = note;
+                                }}
+                              >
+                                Reject
+                              </button>
+                              <input type="hidden" name="reviewNote" defaultValue="" />
+                            </Form>
+                          )}
+                        </span>
+                      ) : <span className="muted">—</span>}
+                    </td>
+                    <td>{r.phone ? <a href={`tel:${r.phone}`}>{r.phone}</a> : "—"}</td>
+                    <td>{r.telegramUsername ? <a href={`https://t.me/${r.telegramUsername}`} target="_blank" rel="noreferrer">@{r.telegramUsername}</a> : "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </section>
   );
 }

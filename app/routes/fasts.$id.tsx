@@ -1,8 +1,9 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { Form, Link, redirect, useNavigation, useRouteLoaderData, useSearchParams } from "react-router";
 import type { Route } from "./+types/fasts.$id";
 import type { loader as rootLoader } from "../root";
-import { Chips, PageHead, TabBar, Tile, Tiles } from "../components/Dash";
+import { PageHead } from "../components/Dash";
+import { Counts } from "../components/Panel";
 import { getDb, schema } from "../db";
 import { countBy, matchesSearch, pickParam } from "../lib/dashboard";
 import { todayInAddis } from "../lib/departments";
@@ -11,6 +12,7 @@ import { formatEc } from "../lib/ethiopian-date";
 import {
   FAST_TYPE_LABELS,
   FAST_TYPES,
+  MEALS_PER_DAY,
   fastDays,
   isFastOn,
   isFastType,
@@ -40,7 +42,16 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
   const days = fastDays(fast.startDate, fast.endDate);
   const i = days.indexOf(day);
 
-  const registrants = await loadRegistrants(db, fast.id);
+  const [registrants, totals] = await Promise.all([
+    loadRegistrants(db, fast.id),
+    // Every meal each person has eaten in this fast so far (the history behind the daily table)
+    db
+      .select({ memberId: schema.fastCheckins.memberId, meals: sql<number>`count(*)`, days: sql<number>`count(distinct ${schema.fastCheckins.date})` })
+      .from(schema.fastCheckins)
+      .where(eq(schema.fastCheckins.fastId, fast.id))
+      .groupBy(schema.fastCheckins.memberId),
+  ]);
+  const totalBy = new Map(totals.map((t) => [t.memberId, t]));
   const eaten = await db
     .select({ memberId: schema.fastCheckins.memberId, meal: schema.fastCheckins.meal })
     .from(schema.fastCheckins)
@@ -60,6 +71,8 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
     registrants: registrants.map((r) => ({
       ...r,
       registeredAt: r.registeredAt.getTime(),
+      eatenTotal: totalBy.get(r.memberId)?.meals ?? 0,
+      daysTotal: totalBy.get(r.memberId)?.days ?? 0,
       meals: Object.fromEntries(
         fast.meals.map((m) => [m, mealsFor(fast.meals, r.fastType).includes(m) ? eatenSet.has(`${r.memberId}:${m}`) : null]),
       ) as Partial<Record<Meal, boolean | null>>, // true eaten, false not yet, null fasting from it
@@ -172,31 +185,22 @@ export default function FastPage({ loaderData, actionData }: Route.ComponentProp
       />
       {actionData?.message && <p className="notice" role="status">{actionData.message}</p>}
 
-      <Tiles>
-        <Tile to={keep({ type: null })} n={typeCounts.all} label="Registered" />
-        {FAST_TYPES.map((t) => (
-          <Tile key={t} to={keep({ type: t })} n={typeCounts[t]} label={FAST_TYPE_LABELS[t][lang]} lang={lang} tone={type === t ? "green" : "slate"} />
-        ))}
-      </Tiles>
+      <nav className="seg-tabs" aria-label="View">
+        <Link to={keep({ tab: "registered" })} aria-current={tab === "registered" ? "page" : undefined} preventScrollReset>📋 Registered</Link>
+        <Link to={keep({ tab: "daily" })} aria-current={tab === "daily" ? "page" : undefined} preventScrollReset>📅 Daily tracker</Link>
+      </nav>
 
-      <TabBar
-        active={tab}
-        tabs={[
-          { key: "registered", to: keep({ tab: "registered" }), label: "Registered", icon: "📋", count: rows.length },
-          { key: "daily", to: keep({ tab: "daily" }), label: "Daily meals", icon: "🍲" },
+      <Counts
+        items={[
+          { to: keep({ type: null }), n: typeCounts.all, label: "All", active: !type },
+          ...FAST_TYPES.map((t) => ({ to: keep({ type: t }), n: typeCounts[t], label: `${MEALS_PER_DAY[t]} a day`, active: type === t })),
         ]}
       />
 
-      <div className="card filter-card">
-        <div className="filter-top">
-          <Form method="get" className="list-tools" role="search">
-            {[...params.entries()].filter(([k]) => k !== "q").map(([k, v]) => <input key={k} type="hidden" name={k} value={v} />)}
-            <input type="search" name="q" defaultValue={q} placeholder="Search name or student ID" aria-label="Search" />
-            <button className="btn btn-quiet btn-sm" aria-label="Search">🔍</button>
-          </Form>
-        </div>
-        <Chips label="Fast type" param="type" value={type} counts={typeCounts} lang={lang} options={FAST_TYPES.map((t) => [t, FAST_TYPE_LABELS[t][lang]] as const)} />
-      </div>
+      <Form method="get" className="card filter-bar" role="search">
+        {[...params.entries()].filter(([k]) => k !== "q").map(([k, v]) => <input key={k} type="hidden" name={k} value={v} />)}
+        <input type="search" name="q" defaultValue={q} placeholder="🔍 Name or student ID" aria-label="Search" className="filter-q" />
+      </Form>
 
       {tab === "registered" && (
         <>
@@ -220,13 +224,20 @@ export default function FastPage({ loaderData, actionData }: Route.ComponentProp
               </Form>
             </details>
           )}
+          <div className="card table-card">
+          <div className="table-bar">
+            <strong>{rows.length} registered</strong>
+            <span className="table-bar-buttons">
+              <a href={`/fasts/${fast.id}/report.csv`} download className="btn btn-primary btn-sm">⬇ Export for university</a>
+            </span>
+          </div>
           {rows.length === 0 ? (
-            <p className="muted">Nobody yet. Print the poster so students can scan it and register.</p>
+            <p className="muted table-empty">Nobody yet. Print the poster so students can scan it and register.</p>
           ) : (
             <div className="table-wrap">
               <table className="table-oneline">
                 <thead>
-                  <tr><th>#</th><th>Student ID</th><th>Name</th><th>Registered</th><th>Fast type</th>{canManage && <th><span className="visually-hidden">Actions</span></th>}</tr>
+                  <tr><th>#</th><th>Student ID</th><th>Name</th><th className="num">Meals a day</th><th className="num">Eaten so far</th><th>Registered</th>{canManage && <th><span className="visually-hidden">Actions</span></th>}</tr>
                 </thead>
                 <tbody>
                   {rows.map((r, n) => (
@@ -234,8 +245,9 @@ export default function FastPage({ loaderData, actionData }: Route.ComponentProp
                       <td className="muted">{n + 1}</td>
                       <td>{r.studentId}</td>
                       <td><strong>{r.fullName}</strong></td>
+                      <td className="num"><strong>{MEALS_PER_DAY[r.fastType]}</strong></td>
+                      <td className="num">{r.eatenTotal} meal{r.eatenTotal === 1 ? "" : "s"} · {r.daysTotal} day{r.daysTotal === 1 ? "" : "s"}</td>
                       <td lang={lang}>{formatEc(new Date(r.registeredAt + 3 * 3600 * 1000).toISOString().slice(0, 10), lang)}</td>
-                      <td lang={lang}>{FAST_TYPE_LABELS[r.fastType][lang]}</td>
                       {canManage && (
                         <td>
                           <Form
@@ -256,6 +268,7 @@ export default function FastPage({ loaderData, actionData }: Route.ComponentProp
               </table>
             </div>
           )}
+          </div>
         </>
       )}
 
@@ -269,11 +282,9 @@ export default function FastPage({ loaderData, actionData }: Route.ComponentProp
             </div>
             {nextDay ? <Link to={keep({ day: nextDay })} className="btn btn-quiet btn-sm" preventScrollReset>Next →</Link> : <span className="btn btn-quiet btn-sm" aria-disabled="true">Next →</span>}
           </div>
-          <Tiles>
-            {mealTotals.map((t) => (
-              <Tile key={t.meal} to={keep({})} n={`${t.eaten} / ${t.expected}`} label={MEAL_LABELS[t.meal][lang]} lang={lang} tone={t.expected && t.eaten === t.expected ? "green" : "lapis"} />
-            ))}
-          </Tiles>
+          <Counts
+            items={mealTotals.map((t) => ({ to: keep({}), n: t.eaten, label: `/ ${t.expected} ${MEAL_LABELS[t.meal].en}` }))}
+          />
           {rows.length === 0 ? (
             <p className="muted">Nobody to show.</p>
           ) : (
@@ -281,7 +292,7 @@ export default function FastPage({ loaderData, actionData }: Route.ComponentProp
               <table className="table-oneline meal-table">
                 <thead>
                   <tr>
-                    <th>Student ID</th><th>Name</th><th>Fast type</th>
+                    <th>Student ID</th><th>Name</th><th className="num">A day</th>
                     {fast.meals.map((m) => <th key={m} className="meal-col" lang={lang}>{MEAL_LABELS[m][lang]}</th>)}
                   </tr>
                 </thead>
@@ -290,7 +301,7 @@ export default function FastPage({ loaderData, actionData }: Route.ComponentProp
                     <tr key={r.memberId}>
                       <td>{r.studentId}</td>
                       <td><strong>{r.fullName}</strong></td>
-                      <td lang={lang} className="muted">{FAST_TYPE_LABELS[r.fastType][lang].split(" · ")[1]}</td>
+                      <td className="num muted">{MEALS_PER_DAY[r.fastType]}</td>
                       {fast.meals.map((m) => {
                         const v = r.meals[m];
                         if (v === null || v === undefined) return <td key={m} className="meal-col meal-skip" title="Fasting from this meal">—</td>;

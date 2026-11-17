@@ -98,10 +98,7 @@ function Menu({ data, lang }: { data: NonNullable<ReturnType<typeof useRouteLoad
                 🏛️ {departmentName(d, lang)}
               </NavLink>
             ))}
-            <p className="drawer-section" />
-            <NavLink to="/account">🏠 My dashboard</NavLink>
-            <NavLink to="/" end>⛪ Home page</NavLink>
-            <form method="post" action="/logout"><button className="link-btn drawer-signout">Sign out</button></form>
+            <form method="post" action="/logout"><button className="drawer-signout">↪ Sign out</button></form>
           </>
         ) : (
           <>

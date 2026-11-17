@@ -1,24 +1,18 @@
-import { and, asc, eq, ne } from "drizzle-orm";
-import { Form, Link, useNavigation, useRouteLoaderData } from "react-router";
+import { and, asc, eq, inArray } from "drizzle-orm";
+import { Form, useNavigation, useRouteLoaderData } from "react-router";
 import type { Route } from "./+types/admin.members";
 import type { loader as rootLoader } from "../root";
-import { PageHead } from "../components/Dash";
 import { getDb, schema, type Db } from "../db";
 import { clearLoginFailures, setPasswordHash } from "../lib/accounts.server";
 import { departmentName, isPosition, POSITION_LABELS, POSITIONS, roleAfterLeadershipChange } from "../lib/departments";
 import { DEFAULT_LANG } from "../lib/lang";
 import { hashPassword } from "../lib/password";
 import { isRole, type Role } from "../lib/permissions";
-import { formatYear } from "../lib/registration";
 import { requirePermission } from "../lib/session.server";
 
 export function meta() {
-  return [{ title: "ጽህፈት ቤት · Roles & positions · Gibi Gubae" }];
+  return [{ title: "Roles & positions · Gibi Gubae" }];
 }
-
-/** Roles an admin picks by hand. "Department leader" is automatic: it comes from leading a department. */
-const PICKABLE = ["member", "cafe", "finance", "admin"] as const;
-const ROLE_LABELS: Record<Role, string> = { member: "Member", dept_leader: "Member", finance: "Finance", cafe: "Cafe coordinator", admin: "Admin" };
 
 /** 10 characters without look-alikes (0/O, 1/l/I). */
 function temporaryPassword() {
@@ -28,20 +22,15 @@ function temporaryPassword() {
 
 export async function loader({ request, context }: Route.LoaderArgs) {
   const { env } = context.cloudflare;
-  const me = await requirePermission(request, env, "member:manage");
+  await requirePermission(request, env, "member:manage");
   const db = getDb(env.DB);
-  const [members, departments, leads] = await Promise.all([
+  const [members, departments, leaders] = await Promise.all([
     db
       .select({
-        userId: schema.user.id,
         memberId: schema.members.id,
+        userId: schema.user.id,
         fullName: schema.members.fullName,
         studentId: schema.members.studentId,
-        phone: schema.members.phone,
-        telegramUsername: schema.user.telegramUsername,
-        telegramId: schema.user.telegramId,
-        fieldOfStudy: schema.members.fieldOfStudy,
-        yearOfStudy: schema.members.yearOfStudy,
         role: schema.user.role,
         position: schema.user.position,
       })
@@ -49,43 +38,46 @@ export async function loader({ request, context }: Route.LoaderArgs) {
       .innerJoin(schema.user, eq(schema.user.id, schema.members.userId))
       .where(eq(schema.members.status, "active"))
       .orderBy(asc(schema.members.fullName)),
-    db.query.departments.findMany({ orderBy: asc(schema.departments.sortOrder) }),
+    db.query.departments.findMany({ orderBy: asc(schema.departments.sortOrder), columns: { id: true, nameOm: true, nameAm: true } }),
     db
-      .select({ memberId: schema.departmentMembers.memberId, departmentId: schema.departmentMembers.departmentId })
+      .select({ departmentId: schema.departmentMembers.departmentId, memberId: schema.departmentMembers.memberId })
       .from(schema.departmentMembers)
       .where(and(eq(schema.departmentMembers.role, "leader"), eq(schema.departmentMembers.status, "active"))),
   ]);
-  const leadsBy = new Map(leads.map((l) => [l.memberId, l.departmentId]));
+  const name = new Map(members.map((m) => [m.memberId, m.fullName]));
   return {
-    myId: me.id,
-    departments: departments.map((d) => ({ id: d.id, nameOm: d.nameOm, nameAm: d.nameAm })),
-    members: members.map((m) => ({ ...m, leads: leadsBy.get(m.memberId) ?? "" })),
+    members: members.map((m) => ({ memberId: m.memberId, fullName: m.fullName, studentId: m.studentId })),
+    positions: POSITIONS.map((p) => {
+      const holder = members.find((m) => m.position === p);
+      return { position: p, holder: holder ? { memberId: holder.memberId, fullName: holder.fullName } : null };
+    }),
+    departments: departments.map((d) => ({
+      ...d,
+      leaders: leaders.filter((l) => l.departmentId === d.id).map((l) => ({ memberId: l.memberId, fullName: name.get(l.memberId) ?? "?" })),
+    })),
+    cafe: members.filter((m) => m.role === "cafe").map((m) => ({ memberId: m.memberId, fullName: m.fullName })),
   };
 }
 
-/** Makes `memberId` lead `departmentId` (or nothing): joins them to it if needed; one department per person. */
-async function setLeadership(db: Db, memberId: string, departmentId: string | null) {
-  await db
-    .update(schema.departmentMembers)
-    .set({ role: "member" })
-    .where(and(eq(schema.departmentMembers.memberId, memberId), eq(schema.departmentMembers.role, "leader")));
-  if (!departmentId) return;
-  await db
-    .insert(schema.departmentMembers)
-    .values({ departmentId, memberId, role: "leader", status: "active" })
-    .onConflictDoUpdate({
-      target: [schema.departmentMembers.departmentId, schema.departmentMembers.memberId],
-      set: { role: "leader", status: "active", updatedAt: new Date() },
-    });
+/** Recomputes a person's role from their position and leadership; admin/cafe/finance set by hand stay. */
+async function syncRole(db: Db, userId: string) {
+  const u = await db.query.user.findFirst({ where: eq(schema.user.id, userId), columns: { role: true, position: true } });
+  if (!u || !isRole(u.role)) return;
+  const m = await db.query.members.findFirst({ where: eq(schema.members.userId, userId), columns: { id: true } });
+  const leads = m
+    ? Boolean(
+        await db.query.departmentMembers.findFirst({
+          where: and(eq(schema.departmentMembers.memberId, m.id), eq(schema.departmentMembers.role, "leader"), eq(schema.departmentMembers.status, "active")),
+          columns: { id: true },
+        }),
+      )
+    : false;
+  const next: Role = u.position ? "admin" : roleAfterLeadershipChange(u.role, leads);
+  if (next !== u.role) await db.update(schema.user).set({ role: next }).where(eq(schema.user.id, userId));
 }
 
-async function leadsAny(db: Db, memberId: string) {
-  return Boolean(
-    await db.query.departmentMembers.findFirst({
-      where: and(eq(schema.departmentMembers.memberId, memberId), eq(schema.departmentMembers.role, "leader"), eq(schema.departmentMembers.status, "active")),
-      columns: { id: true },
-    }),
-  );
+async function memberUser(db: Db, memberId: string) {
+  return db.query.members.findFirst({ where: and(eq(schema.members.id, memberId), eq(schema.members.status, "active")), columns: { id: true, userId: true, fullName: true, studentIdKey: true } });
 }
 
 export async function action({ request, context }: Route.ActionArgs) {
@@ -93,135 +85,186 @@ export async function action({ request, context }: Route.ActionArgs) {
   const me = await requirePermission(request, env, "member:manage");
   const db = getDb(env.DB);
   const form = await request.formData();
-  const userId = String(form.get("userId") ?? "");
-  const target = await db.query.members.findFirst({
-    where: eq(schema.members.userId, userId),
-    columns: { id: true, fullName: true, studentIdKey: true },
-  });
-  if (!target) throw new Response("Member not found", { status: 404 });
+  const intent = form.get("intent");
+  const memberId = String(form.get("memberId") ?? "");
 
-  if (form.get("intent") === "reset-password") {
-    // A temporary password the admin passes on; the member changes it on My account
+  // ዋና ሰብሳቢ / ምክትል ሰብሳቢ / ጸሐፊ: one person each, and the position gives admin access
+  if (intent === "position" || intent === "clear-position") {
+    const position = form.get("position");
+    if (!isPosition(position)) return { message: "Unknown position." };
+    const previous = await db.query.user.findFirst({ where: eq(schema.user.position, position), columns: { id: true, role: true } });
+    if (intent === "clear-position") {
+      if (!previous) return null;
+      if (previous.id === me.id) return { message: "You can't remove your own position. Ask another officer." };
+      // Losing the position also removes the admin access it gave
+      await db.update(schema.user).set({ position: null, role: "member" }).where(eq(schema.user.id, previous.id));
+      await syncRole(db, previous.id);
+      return { message: "Position cleared." };
+    }
+    const target = await memberUser(db, memberId);
+    if (!target) return { message: "Choose a member." };
+    if (previous && previous.id !== target.userId) {
+      if (previous.id === me.id) return { message: "You can't give away your own position. Ask another officer." };
+      await db.update(schema.user).set({ position: null, role: "member" }).where(eq(schema.user.id, previous.id));
+      await syncRole(db, previous.id);
+    }
+    // A person holds one position at a time
+    await db.update(schema.user).set({ position, role: "admin" }).where(eq(schema.user.id, target.userId));
+    return { message: `${target.fullName} is now ${POSITION_LABELS[position].am}.` };
+  }
+
+  // Department leader: one per department; the previous leader stays in the department as a member
+  if (intent === "leader" || intent === "clear-leader") {
+    const departmentId = String(form.get("departmentId") ?? "");
+    const dept = await db.query.departments.findFirst({ where: eq(schema.departments.id, departmentId), columns: { id: true } });
+    if (!dept) return { message: "Unknown department." };
+    const current = await db
+      .select({ memberId: schema.departmentMembers.memberId, userId: schema.members.userId })
+      .from(schema.departmentMembers)
+      .innerJoin(schema.members, eq(schema.members.id, schema.departmentMembers.memberId))
+      .where(and(eq(schema.departmentMembers.departmentId, dept.id), eq(schema.departmentMembers.role, "leader")));
+    const target = intent === "leader" ? await memberUser(db, memberId) : null;
+    if (intent === "leader" && !target) return { message: "Choose a member." };
+    if (current.length) {
+      await db
+        .update(schema.departmentMembers)
+        .set({ role: "member" })
+        .where(and(eq(schema.departmentMembers.departmentId, dept.id), inArray(schema.departmentMembers.memberId, current.map((c) => c.memberId))));
+    }
+    if (target) {
+      await db
+        .insert(schema.departmentMembers)
+        .values({ departmentId: dept.id, memberId: target.id, role: "leader", status: "active" })
+        .onConflictDoUpdate({
+          target: [schema.departmentMembers.departmentId, schema.departmentMembers.memberId],
+          set: { role: "leader", status: "active", updatedAt: new Date() },
+        });
+    }
+    for (const userId of new Set([...current.map((c) => c.userId), ...(target ? [target.userId] : [])])) await syncRole(db, userId);
+    return { message: target ? `${target.fullName} now leads this department.` : "Leader removed." };
+  }
+
+  // Cafe coordinators scan QR codes at fasts
+  if (intent === "cafe-add" || intent === "cafe-remove") {
+    const target = await memberUser(db, memberId);
+    if (!target) return { message: "Choose a member." };
+    const u = await db.query.user.findFirst({ where: eq(schema.user.id, target.userId), columns: { role: true } });
+    if (intent === "cafe-add") {
+      if (u?.role === "admin") return { message: `${target.fullName} is an admin and can already scan.` };
+      await db.update(schema.user).set({ role: "cafe" }).where(eq(schema.user.id, target.userId));
+    } else {
+      await db.update(schema.user).set({ role: "member" }).where(eq(schema.user.id, target.userId));
+      await syncRole(db, target.userId);
+    }
+    return { message: "Saved." };
+  }
+
+  if (intent === "reset-password") {
+    const target = await memberUser(db, memberId);
+    if (!target) return { message: "Choose a member." };
     const temp = temporaryPassword();
-    await setPasswordHash(db, userId, await hashPassword(temp));
+    await setPasswordHash(db, target.userId, await hashPassword(temp));
     if (target.studentIdKey) await clearLoginFailures(db, target.studentIdKey);
     return { message: `Temporary password for ${target.fullName}: ${temp} — give it to them privately; they can change it on My account.` };
   }
 
-  const picked = form.get("role");
-  const positionRaw = form.get("position");
-  const position = positionRaw === "" || positionRaw === null ? null : positionRaw;
-  const leadsRaw = String(form.get("leads") ?? "");
-  if (!isRole(picked) || picked === "dept_leader") return { message: "Unknown role." };
-  if (position !== null && !isPosition(position)) return { message: "Unknown position." };
-  const dept = leadsRaw ? await db.query.departments.findFirst({ where: eq(schema.departments.id, leadsRaw), columns: { id: true } }) : null;
-  if (leadsRaw && !dept) return { message: "Unknown department." };
+  throw new Response("Unknown action", { status: 400 });
+}
 
-  // The three positions (ዋና ሰብሳቢ, ምክትል ሰብሳቢ, ጸሐፊ) come with admin access
-  const base: Role = position ? "admin" : picked;
-  // Prevents an admin locking everyone (including themselves) out
-  if (userId === me.id && base !== "admin") return { message: "You can't remove your own admin access. Ask another admin." };
+/** Dropdown of every active member, with a button. */
+function Assign({ members, intent, hidden, button, current }: {
+  members: { memberId: string; fullName: string; studentId: string }[];
+  intent: string;
+  hidden: Record<string, string>;
+  button: string;
+  current?: string;
+}) {
+  const busy = useNavigation().state !== "idle";
+  return (
+    <Form method="post" className="assign" preventScrollReset>
+      <input type="hidden" name="intent" value={intent} />
+      {Object.entries(hidden).map(([k, v]) => <input key={k} type="hidden" name={k} value={v} />)}
+      <select name="memberId" required defaultValue="" aria-label="Choose a member">
+        <option value="" disabled>Choose a member…</option>
+        {members.filter((m) => m.memberId !== current).map((m) => <option key={m.memberId} value={m.memberId}>{m.fullName} · {m.studentId}</option>)}
+      </select>
+      <button className="btn btn-primary btn-sm" disabled={busy}>{button}</button>
+    </Form>
+  );
+}
 
-  await setLeadership(db, target.id, dept?.id ?? null);
-  const role = roleAfterLeadershipChange(base === "admin" || base === "cafe" || base === "finance" ? base : "member", await leadsAny(db, target.id));
-
-  // Each position belongs to one person: whoever had it loses it (and the admin access that came with it)
-  if (position) {
-    const previous = await db.query.user.findFirst({
-      where: and(eq(schema.user.position, position), ne(schema.user.id, userId)),
-      columns: { id: true },
-    });
-    if (previous) {
-      const prevMember = await db.query.members.findFirst({ where: eq(schema.members.userId, previous.id), columns: { id: true } });
-      const prevRole = roleAfterLeadershipChange("member", prevMember ? await leadsAny(db, prevMember.id) : false);
-      await db.update(schema.user).set({ position: null, role: prevRole }).where(eq(schema.user.id, previous.id));
-    }
-  }
-  await db.update(schema.user).set({ role, position }).where(eq(schema.user.id, userId));
-  return { message: `Saved: ${target.fullName}.` };
+function Clear({ intent, hidden, label }: { intent: string; hidden: Record<string, string>; label: string }) {
+  const busy = useNavigation().state !== "idle";
+  return (
+    <Form method="post" preventScrollReset onSubmit={(e) => { if (!window.confirm(`${label}?`)) e.preventDefault(); }}>
+      <input type="hidden" name="intent" value={intent} />
+      {Object.entries(hidden).map(([k, v]) => <input key={k} type="hidden" name={k} value={v} />)}
+      <button className="link-btn" disabled={busy} aria-label={label}>✕</button>
+    </Form>
+  );
 }
 
 export default function RolesPage({ loaderData, actionData }: Route.ComponentProps) {
   const root = useRouteLoaderData<typeof rootLoader>("root");
   const lang = root?.lang ?? DEFAULT_LANG;
-  const busy = useNavigation().state !== "idle";
-  const { members, myId, departments } = loaderData;
+  const { members, positions, departments, cafe } = loaderData;
 
   return (
     <section className="page wide">
-      <PageHead
-        back={{ to: "/account", label: "My dashboard" }}
-        title={<><span lang="am">ጽህፈት ቤት</span> · Roles & positions</>}
-        sub={`${members.length} active members · changes apply within 5 minutes`}
-        actions={<Link to="/admin/telegram">🤖 Telegram bot</Link>}
-      />
-      <div className="card">
-        <ul className="role-legend">
-          <li><strong>Position</strong> (ዋና ሰብሳቢ, ምክትል ሰብሳቢ, ጸሐፊ): gives admin access. Removing it removes admin access.</li>
-          <li><strong>Leads department</strong>: makes them that department's leader (adds them to it if needed). They then manage it from their dashboard.</li>
-          <li><strong>Role</strong>: Cafe coordinator scans QR codes at fasts; Admin gives full access without a position.</li>
-        </ul>
-      </div>
       {actionData?.message && <p className="notice" role="status">{actionData.message}</p>}
 
-      <div className="role-list">
-        {members.map((m) => {
-          const fromPosition = Boolean(m.position);
-          return (
-            <div key={m.userId} className="card role-row">
-              <div className="role-who">
-                <strong>{m.fullName}</strong>
-                <span className="muted">{m.studentId} · {m.fieldOfStudy} · {formatYear(m.yearOfStudy)}</span>
-                <span className="muted">
-                  {m.telegramId ? (m.telegramUsername ? `@${m.telegramUsername}` : "Telegram ✓") : <span className="pill pill-pay-unpaid">No Telegram</span>}
-                  {m.phone && <> · <a href={`tel:${m.phone}`}>{m.phone}</a></>}
-                </span>
-              </div>
-              <Form method="post" className="role-form">
-                <input type="hidden" name="userId" value={m.userId} />
-                <label className="field">
-                  <span>Position</span>
-                  <select name="position" defaultValue={m.position ?? ""}>
-                    <option value="">No position</option>
-                    {POSITIONS.map((p) => <option key={p} value={p} lang={lang}>{POSITION_LABELS[p][lang]}</option>)}
-                  </select>
-                </label>
-                <label className="field">
-                  <span>Leads department</span>
-                  <select name="leads" defaultValue={m.leads} lang={lang}>
-                    <option value="">None</option>
-                    {departments.map((d) => <option key={d.id} value={d.id}>{departmentName(d, lang)}</option>)}
-                  </select>
-                </label>
-                <label className="field">
-                  <span>Role</span>
-                  {fromPosition ? (
-                    <>
-                      <input type="hidden" name="role" value="member" />
-                      <span className="readonly">Admin (from position)</span>
-                    </>
-                  ) : (
-                    <select name="role" defaultValue={m.role === "dept_leader" ? "member" : m.role} disabled={m.userId === myId}>
-                      {PICKABLE.map((r) => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
-                    </select>
-                  )}
-                  {!fromPosition && m.userId === myId && <input type="hidden" name="role" value="admin" />}
-                </label>
-                <button className="btn btn-primary btn-sm" disabled={busy}>Save</button>
-              </Form>
-              <Form
-                method="post"
-                onSubmit={(e) => {
-                  if (!window.confirm(`Give ${m.fullName} a new temporary password? Their old password stops working.`)) e.preventDefault();
-                }}
-              >
-                <input type="hidden" name="intent" value="reset-password" />
-                <input type="hidden" name="userId" value={m.userId} />
-                <button className="link-btn" disabled={busy}>🔑 Reset password</button>
-              </Form>
+      <div className="card roles-card">
+        <h2><span lang="am">ጽህፈት ቤት</span> <small className="muted">— gives admin access</small></h2>
+        {positions.map((p) => (
+          <div key={p.position} className="assign-row">
+            <div className="assign-what">
+              <strong lang={lang}>{POSITION_LABELS[p.position][lang]}</strong>
+              {p.holder ? (
+                <span className="assign-holder">{p.holder.fullName} <Clear intent="clear-position" hidden={{ position: p.position }} label={`Remove ${p.holder.fullName}`} /></span>
+              ) : <span className="muted">Not assigned</span>}
             </div>
-          );
-        })}
+            <Assign members={members} intent="position" hidden={{ position: p.position }} button={p.holder ? "Change" : "Assign"} current={p.holder?.memberId} />
+          </div>
+        ))}
+      </div>
+
+      <div className="card roles-card">
+        <h2>Department leaders</h2>
+        {departments.map((d) => (
+          <div key={d.id} className="assign-row">
+            <div className="assign-what">
+              <strong lang={lang}>{departmentName(d, lang)}</strong>
+              {d.leaders.length ? (
+                <span className="assign-holder">
+                  {d.leaders.map((l) => l.fullName).join(", ")} <Clear intent="clear-leader" hidden={{ departmentId: d.id }} label="Remove the leader" />
+                </span>
+              ) : <span className="muted">No leader</span>}
+            </div>
+            <Assign members={members} intent="leader" hidden={{ departmentId: d.id }} button={d.leaders.length ? "Change" : "Assign"} current={d.leaders[0]?.memberId} />
+          </div>
+        ))}
+      </div>
+
+      <div className="card roles-card">
+        <h2>Cafe coordinators <small className="muted">— scan QR codes at fasts</small></h2>
+        <div className="assign-row">
+          <div className="assign-what">
+            {cafe.length ? (
+              cafe.map((c) => (
+                <span key={c.memberId} className="assign-holder">{c.fullName} <Clear intent="cafe-remove" hidden={{ memberId: c.memberId }} label={`Remove ${c.fullName}`} /></span>
+              ))
+            ) : <span className="muted">None</span>}
+          </div>
+          <Assign members={members} intent="cafe-add" hidden={{}} button="Add" />
+        </div>
+      </div>
+
+      <div className="card roles-card">
+        <h2>Forgotten password</h2>
+        <div className="assign-row">
+          <div className="assign-what"><span className="muted">Gives the member a temporary password to sign in with.</span></div>
+          <Assign members={members} intent="reset-password" hidden={{}} button="🔑 Reset" />
+        </div>
       </div>
     </section>
   );

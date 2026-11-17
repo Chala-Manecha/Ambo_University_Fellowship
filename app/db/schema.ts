@@ -102,6 +102,7 @@ export const members = sqliteTable(
     services: text("services", { mode: "json" }).$type<string[]>(), // keys from content/member-options
     otherService: text("other_service"),
     learning: text("learning", { mode: "json" }).$type<string[]>(),
+    photoKey: text("photo_key"), // R2 key of the member's profile photo
     status: text("status", { enum: ["pending", "active", "rejected", "alumni"] })
       .notNull()
       .default("pending"),

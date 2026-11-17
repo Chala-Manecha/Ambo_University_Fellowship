@@ -35,16 +35,15 @@ export default function Office({ loaderData }: Route.ComponentProps) {
       label: "Members",
       items: [
         { to: "/office/members", label: "Members list", icon: "👥" },
-        { to: "/office/registrations", label: "Registrations", icon: "📝" },
         { to: "/office/roles", label: "Roles & positions", icon: "🎖️" },
       ],
     },
-    { label: "Finance", items: [{ to: "/office/dues", label: "Contributions", icon: "💳" }] },
     {
       label: "Programs",
       items: [
+        { to: "/office/dues", label: "Contributions", icon: "💳" },
         { to: "/office/fasts", label: "Fasts", icon: "🍲" },
-        { to: "/office/attendance", label: "Fellowship attendance", icon: "✅" },
+        { to: "/office/attendance", label: "Attendance", icon: "✅" },
       ],
     },
     {
@@ -62,7 +61,7 @@ export default function Office({ loaderData }: Route.ComponentProps) {
         titleLang="am"
         sub={
           <>
-            <p>Welcome, {name}.</p>
+            <p>{name}</p>
             <p className="panel-date" lang={lang}>
               <b>{WEEKDAYS[lang][weekday]}</b> {formatEc(today, lang)}
             </p>

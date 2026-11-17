@@ -75,8 +75,8 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
   const tools: { to: string; label: string; icon: string }[] = [];
   if (dept.id === MEMBER_AFFAIRS) {
     if (canListMembers(user.role, leaderOf)) tools.push({ to: `${base}/all-members`, label: "All members", icon: "👥" });
+    if (canListMembers(user.role, leaderOf)) tools.push({ to: `${base}/choices`, label: "Members' choices", icon: "🗳️" });
     if (can(user.role, "fast:manage") || can(user.role, "fast:scan")) tools.push({ to: `${base}/fasts`, label: "Fasts", icon: "🍲" });
-    if (can(user.role, "registration:review")) tools.push({ to: `${base}/registrations`, label: "Registrations", icon: "📝" });
   }
   if (dept.id === BATCH_DEPT) {
     if (canManageDues(user.role, leaderOf)) tools.push({ to: `${base}/dues`, label: "Contributions", icon: "💳" });
@@ -244,18 +244,11 @@ export default function Department({ loaderData, actionData }: Route.ComponentPr
   const tab = pickParam(params.get("tab"), TABS) ?? "members";
   const leaders = active.filter((p) => p.role === "leader");
   const base = `/departments/${dept.id}`;
+  // Members and join requests are the count buttons below; the panel only switches pages
   const groups: PanelGroup[] = [
-    {
-      label: "Department",
-      items: [
-        { to: `${base}?tab=members`, label: tools.some((t) => t.label === "All members") ? "Department members" : "Members", icon: "👥" },
-        { to: `${base}?tab=requests`, label: "Join requests", icon: "🙋" },
-        { to: `${base}?tab=attendance`, label: "Attendance", icon: "✅" },
-      ],
-    },
     { label: "Fellowship", items: tools },
+    { label: "Department", items: [{ to: `${base}?tab=attendance`, label: "Attendance", icon: "✅" }] },
   ];
-
   return (
     <section className="page wide panel-page">
       <Panel

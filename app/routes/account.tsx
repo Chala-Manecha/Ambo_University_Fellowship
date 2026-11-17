@@ -45,7 +45,7 @@ async function loadMember(db: ReturnType<typeof getDb>, userId: string) {
     where: eq(schema.members.userId, userId),
     columns: {
       id: true, status: true, fullName: true, christianName: true, title: true, studentId: true, birthDate: true,
-      fieldOfStudy: true, yearOfStudy: true, contentLanguage: true,
+      fieldOfStudy: true, yearOfStudy: true, contentLanguage: true, photoKey: true,
     },
   });
 }
@@ -245,10 +245,15 @@ export default function Account({ loaderData, actionData }: Route.ComponentProps
             <Link to="/account/password">⚙️ Password</Link>
           </div>
         </div>
-        <h1>
-          {m.title && <span lang={lang}>{TITLES[m.title][lang]} </span>}
-          {m.fullName}
-        </h1>
+        <div className="member-id">
+          <Link to="/account/details" className="member-photo" aria-label={m.photoKey ? "Change my photo" : "Add my photo"}>
+            {m.photoKey ? <img src={`/photos/${m.id}`} alt="" width={64} height={64} /> : <span aria-hidden="true">📷</span>}
+          </Link>
+          <h1>
+            {m.title && <span lang={lang}>{TITLES[m.title][lang]} </span>}
+            {m.fullName}
+          </h1>
+        </div>
         <p className="page-head-sub">
           {formatYear(m.yearOfStudy)} · {m.fieldOfStudy} · {m.studentId}
           {isPosition(d.position) && <> · <span lang={lang}>{POSITION_LABELS[d.position][lang]}</span></>}
@@ -308,7 +313,7 @@ export default function Account({ loaderData, actionData }: Route.ComponentProps
           )}
 
           <p className="dash-links">
-            <Link to="/account/details" className="btn btn-quiet btn-sm">✏️ Update my details</Link>
+            <Link to="/account/details" className="btn btn-quiet btn-sm">✏️ Edit my details & photo</Link>
             <Link to="/fasts" className="btn btn-quiet btn-sm">🍲 Fasts</Link>
             <Link to="/departments" className="btn btn-quiet btn-sm">🏛️ All departments</Link>
           </p>

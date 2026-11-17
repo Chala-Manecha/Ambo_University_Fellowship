@@ -20,11 +20,15 @@ export const FAST_TYPE_MEALS: Record<FastType, readonly Meal[]> = {
   dinner_only: ["dinner"],
 };
 
+/** The cafe serves all three meals; students only choose which to skip. No other details are kept. */
 export const FAST_TYPE_LABELS: Record<FastType, Record<ContentLang | "en", string>> = {
-  meat_only: { en: "Meat only · 3 meals", am: "ከሥጋ ብቻ · በቀን 3 ጊዜ", om: "Foon qofa · guyyaatti si'a 3" },
-  no_breakfast: { en: "Skips breakfast · 2 meals", am: "ቁርስ ብቻ እዘላለሁ · በቀን 2 ጊዜ", om: "Ciree qofa dhiisa · guyyaatti si'a 2" },
-  dinner_only: { en: "Skips breakfast & lunch · 1 meal", am: "ቁርስና ምሳ እዘላለሁ · በቀን 1 ጊዜ", om: "Ciree fi laaqana dhiisa · guyyaatti si'a 1" },
+  meat_only: { en: "Eats all 3 meals · 3 a day", am: "ሦስቱንም ምግብ እበላለሁ · በቀን 3 ጊዜ", om: "Nyaata sadanuu nan nyaadha · guyyaatti si'a 3" },
+  no_breakfast: { en: "Skips breakfast · 2 a day", am: "ቁርስ እዘላለሁ · በቀን 2 ጊዜ", om: "Ciree nan dhiisa · guyyaatti si'a 2" },
+  dinner_only: { en: "Skips breakfast & lunch · 1 a day", am: "ቁርስና ምሳ እዘላለሁ · በቀን 1 ጊዜ", om: "Ciree fi laaqana nan dhiisa · guyyaatti si'a 1" },
 };
+
+/** Meals a day for each choice: the number the university report needs. */
+export const MEALS_PER_DAY: Record<FastType, number> = { meat_only: 3, no_breakfast: 2, dinner_only: 1 };
 
 export function isFastType(v: unknown): v is FastType {
   return typeof v === "string" && (FAST_TYPES as readonly string[]).includes(v);

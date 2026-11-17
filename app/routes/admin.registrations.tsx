@@ -1,11 +1,9 @@
-import { and, asc, eq } from "drizzle-orm";
+import { asc, eq } from "drizzle-orm";
 import { Form, Link, useNavigation } from "react-router";
 import type { Route } from "./+types/admin.registrations";
-import { MEMBER_DECISION } from "../content/bot";
 import { getDb, schema } from "../db";
-import { sendMessage } from "../lib/bot.server";
-import { getDepartmentLeaderTelegramIds } from "../lib/departments.server";
-import { formatYear, reviewTransition } from "../lib/registration";
+import { reviewRegistration } from "../lib/registrations.server";
+import { formatYear } from "../lib/registration";
 import { requirePermission } from "../lib/session.server";
 
 export function meta() {
@@ -47,56 +45,7 @@ export async function action({ request, context }: Route.ActionArgs) {
     throw new Response("Unknown decision", { status: 400 });
   }
 
-  const db = getDb(env.DB);
-  const member = await db.query.members.findFirst({
-    where: eq(schema.members.id, id),
-    columns: { status: true },
-  });
-  if (!member) throw new Response("Registration not found", { status: 404 });
-
-  const next = reviewTransition(member.status, decision);
-  if (!next) return { message: "This registration was already reviewed." };
-
-  // status guard in WHERE prevents two reviewers racing on the same row
-  const updated = await db
-    .update(schema.members)
-    .set({ status: next, reviewedBy: reviewer.id, reviewedAt: new Date() })
-    .where(and(eq(schema.members.id, id), eq(schema.members.status, "pending")))
-    .returning({ userId: schema.members.userId, contentLanguage: schema.members.contentLanguage });
-
-  // Tell the member on Telegram, in the language they chose
-  const row = updated[0];
-  if (row) {
-    const u = await db.query.user.findFirst({ where: eq(schema.user.id, row.userId), columns: { telegramId: true } });
-    if (u?.telegramId) {
-      const text = MEMBER_DECISION[row.contentLanguage][next === "active" ? "approved" : "rejected"];
-      ctx.waitUntil(sendMessage(env, u.telegramId, text));
-    }
-  }
-
-  // Departments chosen at registration: tell those leaders there's a request to review
-  if (row && next === "active") {
-    const requests = await db
-      .select({ departmentId: schema.departmentMembers.departmentId, nameOm: schema.departments.nameOm, fullName: schema.members.fullName })
-      .from(schema.departmentMembers)
-      .innerJoin(schema.departments, eq(schema.departments.id, schema.departmentMembers.departmentId))
-      .innerJoin(schema.members, eq(schema.members.id, schema.departmentMembers.memberId))
-      .where(and(eq(schema.departmentMembers.memberId, id), eq(schema.departmentMembers.status, "pending")));
-    ctx.waitUntil(
-      Promise.all(
-        requests.map(async (r) => {
-          const leaders = await getDepartmentLeaderTelegramIds(db, r.departmentId);
-          await Promise.all(
-            leaders.map((t) =>
-              sendMessage(env, t, `${r.fullName} asked to join ${r.nameOm}.\nReview: ${env.PUBLIC_SITE_URL}/departments/${r.departmentId}`),
-            ),
-          );
-        }),
-      ),
-    );
-  }
-
-  return { message: next === "active" ? "Registration approved." : "Registration rejected." };
+  return reviewRegistration(env, ctx, getDb(env.DB), reviewer.id, id, decision);
 }
 
 export default function ReviewRegistrations({ loaderData, actionData }: Route.ComponentProps) {

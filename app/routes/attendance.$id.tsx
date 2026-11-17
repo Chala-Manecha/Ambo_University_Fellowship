@@ -118,6 +118,7 @@ export default function TakeAttendance({ loaderData, actionData }: Route.Compone
       </p>
       {actionData?.message && <p className="notice" role="status">{actionData.message}</p>}
 
+      {rows.some((r) => r.status === null) && <p className="muted">Everyone starts as absent. Mark who came as present, then save.</p>}
       {rows.length === 0 ? (
         <p>No members to mark yet.</p>
       ) : (
@@ -129,7 +130,7 @@ export default function TakeAttendance({ loaderData, actionData }: Route.Compone
                 <span className="segmented" role="radiogroup" aria-label={`Attendance for ${r.fullName}`}>
                   {ATTENDANCE_STATUSES.map((s) => (
                     <label key={s} className={`seg seg-${s}`}>
-                      <input type="radio" name={`status:${r.memberId}`} value={s} defaultChecked={r.status === s} />
+                      <input type="radio" name={`status:${r.memberId}`} value={s} defaultChecked={(r.status ?? "absent") === s} />
                       <span>{ATTENDANCE_LABELS[s]}</span>
                     </label>
                   ))}

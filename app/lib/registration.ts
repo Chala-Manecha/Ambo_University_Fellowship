@@ -124,3 +124,18 @@ export function reviewTransition(current: MemberStatus, decision: ReviewDecision
   if (current !== "pending") return null;
   return decision === "approve" ? "active" : "rejected";
 }
+
+/** "My details": the basics a member may change later (not student ID or gender). Phone is optional. */
+export const memberBasicsSchema = registrationObject
+  .pick({ fullName: true, christianName: true, fieldOfStudy: true, yearOfStudy: true })
+  .extend({ phone: z.preprocess((v) => (typeof v === "string" && v.trim() === "" ? undefined : v), ethiopianPhone.optional()) });
+
+export const PHOTO_TYPES = ["image/webp", "image/jpeg", "image/png"] as const;
+export const PHOTO_MAX_BYTES = 3 * 1024 * 1024;
+
+export function checkPhoto(file: unknown): { ok: true; file: File } | { ok: false; error: string } {
+  if (!(file instanceof File) || file.size === 0) return { ok: false, error: "Choose a photo." };
+  if (!(PHOTO_TYPES as readonly string[]).includes(file.type)) return { ok: false, error: "The photo must be JPG, PNG or WebP." };
+  if (file.size > PHOTO_MAX_BYTES) return { ok: false, error: "The photo is too large (max 3 MB)." };
+  return { ok: true, file };
+}

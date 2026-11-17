@@ -51,6 +51,8 @@ export async function monthPayRows(db: Db, month: EcMonth) {
     db
       .select({
         memberId: schema.contributionMonths.memberId,
+        contributionId: schema.contributions.id,
+        note: schema.contributions.note,
         status: schema.contributions.status,
         amount: schema.contributions.amount,
         months: schema.contributions.months,
@@ -65,7 +67,16 @@ export async function monthPayRows(db: Db, month: EcMonth) {
     claims.filter((c) => c.status === "approved").reduce((sum, c) => sum + c.amount / Math.max(1, c.months.length), 0),
   );
   const rows = active
-    .map((m) => ({ ...m, kind: memberKind(m.yearOfStudy), status: (byMember.get(m.id)?.status ?? "unpaid") as PayStatus }))
+    .map((m) => {
+      const c = byMember.get(m.id);
+      return {
+        ...m,
+        kind: memberKind(m.yearOfStudy),
+        status: (c?.status ?? "unpaid") as PayStatus,
+        // The payment covering this month (to see the receipt and review it here)
+        payment: c ? { id: c.contributionId, amount: c.amount, months: c.months, note: c.note } : null,
+      };
+    })
     .sort((a, b) => a.fullName.localeCompare(b.fullName));
   return { rows, collected };
 }

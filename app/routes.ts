@@ -10,7 +10,7 @@ export default [
   route("departments/:id", "routes/departments.$id.tsx", [
     route("all-members", "routes/members.tsx", { id: "dept-members" }),
     route("fasts", "routes/fasts.tsx", { id: "dept-fasts" }),
-    route("registrations", "routes/admin.registrations.tsx", { id: "dept-registrations" }),
+    route("choices", "routes/member-choices.tsx", { id: "dept-choices" }),
     route("dues", "routes/dues.tsx", { id: "dept-dues" }),
     route("attendance", "routes/attendance.tsx", { id: "dept-attendance" }),
   ]),
@@ -18,7 +18,6 @@ export default [
   route("office", "routes/office.tsx", [
     index("routes/office._index.ts"),
     route("members", "routes/members.tsx", { id: "office-members" }),
-    route("registrations", "routes/admin.registrations.tsx", { id: "office-registrations" }),
     route("roles", "routes/admin.members.tsx", { id: "office-roles" }),
     route("dues", "routes/dues.tsx", { id: "office-dues" }),
     route("fasts", "routes/fasts.tsx", { id: "office-fasts" }),
@@ -33,6 +32,8 @@ export default [
   route("fasts/:id/scan", "routes/fasts.$id.scan.tsx"),
   route("fasts/:id/join", "routes/fasts.$id.join.tsx"),
   route("fasts/:id/poster", "routes/fasts.$id.poster.tsx"),
+  route("fasts/:id/report.csv", "routes/fasts.$id.report.ts"),
+  route("photos/:id", "routes/photos.$id.ts"),
   route("account/details", "routes/account.details.tsx"),
   route("account/password", "routes/account.password.tsx"),
   route("me", "routes/me.ts"),

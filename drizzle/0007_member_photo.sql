@@ -1,0 +1,1 @@
+ALTER TABLE `members` ADD `photo_key` text;
