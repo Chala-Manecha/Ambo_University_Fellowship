@@ -502,5 +502,9 @@ table tbody tr:hover td { background: var(--table-hover); }
 .drawer a.active { color: var(--bar-1); font-weight: 700; background: var(--table-head); border-radius: 6px; }
 .drawer-section { margin: 1rem 0 0.2rem; font-size: 0.75rem; font-weight: 700; color: var(--stone); text-transform: uppercase; letter-spacing: 0.06em; }
 .drawer-tag { font-size: 0.7rem; font-weight: 700; color: #fff; background: var(--green); border-radius: 999px; padding: 0.05rem 0.5rem; align-self: center; }
+.dept-tools { display: flex; flex-wrap: wrap; gap: 0.6rem; margin: 0 0 1rem; }
+.dept-tool { flex: 1 1 10rem; display: flex; align-items: center; gap: 0.5rem; padding: 0.85rem 1rem; background: #fff; border: 1px solid var(--line);
+  border-left: 4px solid var(--bar-1); border-radius: 10px; font-weight: 600; color: var(--lapis-ink); text-decoration: none; }
+.dept-tool:hover { background: var(--table-head); }
 .drawer-signout { margin-top: 0.75rem; }
 @media (prefers-reduced-motion: reduce) { .drawer { transition: none; } }

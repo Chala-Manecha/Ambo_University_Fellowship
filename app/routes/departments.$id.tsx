@@ -11,7 +11,11 @@ import { getDb, schema, type Db } from "../db";
 import { sendMessage } from "../lib/bot.server";
 import {
   attendanceRate,
+  BATCH_DEPT,
+  canListMembers,
   canManageDepartment,
+  canManageDues,
+  MEMBER_AFFAIRS,
   departmentName,
   joinTransition,
   roleAfterLeadershipChange,
@@ -43,7 +47,39 @@ async function requireDepartmentAccess(request: Request, env: Env, db: Db, depar
 export async function loader({ request, params, context }: Route.LoaderArgs) {
   const { env } = context.cloudflare;
   const db = getDb(env.DB);
-  const { user, dept } = await requireDepartmentAccess(request, env, db, params.id);
+  const user = await requireUser(request, env);
+  const dept = await db.query.departments.findFirst({ where: eq(schema.departments.id, params.id) });
+  if (!dept) throw new Response("Department not found", { status: 404 });
+  const leaderOf = await getLeaderDepartmentIds(db, user.id);
+
+  if (!canManageDepartment(user.role, leaderOf, dept.id)) {
+    // Ordinary members: who leads it, how many are in it, and whether they're in it
+    const rows = await db
+      .select({ fullName: schema.members.fullName, userId: schema.members.userId, role: schema.departmentMembers.role, status: schema.departmentMembers.status })
+      .from(schema.departmentMembers)
+      .innerJoin(schema.members, eq(schema.members.id, schema.departmentMembers.memberId))
+      .where(and(eq(schema.departmentMembers.departmentId, dept.id), inArray(schema.departmentMembers.status, ["pending", "active"]), eq(schema.members.status, "active")));
+    const mine = rows.find((r) => r.userId === user.id);
+    return {
+      view: "public" as const,
+      dept,
+      leaders: rows.filter((r) => r.role === "leader" && r.status === "active").map((r) => r.fullName),
+      count: rows.filter((r) => r.status === "active").length,
+      myStatus: mine?.status ?? null,
+    };
+  }
+
+  // Fellowship-wide tools that belong to this department
+  const tools: { to: string; label: string; icon: string }[] = [];
+  if (dept.id === MEMBER_AFFAIRS) {
+    if (canListMembers(user.role, leaderOf)) tools.push({ to: "/members", label: "Members", icon: "👥" });
+    if (can(user.role, "fast:manage") || can(user.role, "fast:scan")) tools.push({ to: "/fasts", label: "Fasts", icon: "🍲" });
+    if (can(user.role, "registration:review")) tools.push({ to: "/admin/registrations", label: "Registrations", icon: "📝" });
+  }
+  if (dept.id === BATCH_DEPT) {
+    if (canManageDues(user.role, leaderOf)) tools.push({ to: "/dues", label: "Contributions", icon: "💳" });
+    if (can(user.role, "attendance:fellowship")) tools.push({ to: "/attendance", label: "Fellowship attendance", icon: "✅" });
+  }
 
   const people = await db
     .select({
@@ -89,6 +125,8 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
   }
 
   return {
+    view: "manage" as const,
+    tools,
     dept,
     isAdmin: can(user.role, "department:manage"),
     today: todayInAddis(),
@@ -191,7 +229,8 @@ export default function Department({ loaderData, actionData }: Route.ComponentPr
   const nav = useNavigation();
   const busy = nav.state !== "idle";
   const [params] = useSearchParams();
-  const { dept, isAdmin, today, pending, active, sessions, rate } = loaderData;
+  if (loaderData.view === "public") return <DepartmentPublic data={loaderData} lang={lang} busy={busy} />;
+  const { dept, isAdmin, today, pending, active, sessions, rate, tools } = loaderData;
   const message = actionData && "message" in actionData ? actionData.message : null;
   const error = actionData && "error" in actionData ? actionData.error : null;
   const tab = pickParam(params.get("tab"), TABS) ?? (pending.length > 0 && !params.get("tab") ? "requests" : "members");
@@ -200,13 +239,21 @@ export default function Department({ loaderData, actionData }: Route.ComponentPr
   return (
     <section className="page wide">
       <PageHead
-        back={{ to: "/dashboard", label: "Dashboard" }}
+        back={{ to: "/account", label: "My dashboard" }}
         title={departmentName(dept, lang)}
         lang={lang}
         sub={leaders.length ? <>Led by {leaders.map((l) => l.fullName).join(", ")}</> : "No leader yet"}
         actions={<Link to="/departments">All departments</Link>}
       />
       {message && <p className="notice" role="status">{message}</p>}
+
+      {tools.length > 0 && (
+        <nav className="dept-tools" aria-label="Department tools">
+          {tools.map((t) => (
+            <Link key={t.to} to={t.to} className="dept-tool"><span aria-hidden="true">{t.icon}</span> {t.label}</Link>
+          ))}
+        </nav>
+      )}
 
       <Tiles>
         <Tile to="?tab=members" n={active.length} label="Members" />
@@ -318,6 +365,36 @@ export default function Department({ loaderData, actionData }: Route.ComponentPr
           )}
         </div>
       )}
+    </section>
+  );
+}
+
+type PublicData = Extract<Route.ComponentProps["loaderData"], { view: "public" }>;
+
+/** What an ordinary member sees: the leader, the size, and a way to ask to join. */
+function DepartmentPublic({ data, lang, busy }: { data: PublicData; lang: "om" | "am"; busy: boolean }) {
+  const { dept, leaders, count, myStatus } = data;
+  return (
+    <section className="page narrow">
+      <PageHead
+        back={{ to: "/account", label: "My dashboard" }}
+        title={departmentName(dept, lang)}
+        lang={lang}
+        sub={leaders.length ? <>Led by {leaders.join(", ")}</> : "No leader yet"}
+      />
+      <div className="card">
+        <p><strong>{count}</strong> member{count === 1 ? "" : "s"}</p>
+        {myStatus === "active" ? (
+          <p>✅ You're a member of this department.</p>
+        ) : myStatus === "pending" ? (
+          <p className="muted">Your request to join is waiting for the leader.</p>
+        ) : (
+          <Form method="post" action="/departments">
+            <input type="hidden" name="departmentId" value={dept.id} />
+            <button className="btn btn-primary" disabled={busy}>Ask to join</button>
+          </Form>
+        )}
+      </div>
     </section>
   );
 }

@@ -1,5 +1,5 @@
 import { and, asc, eq, ne } from "drizzle-orm";
-import { Form, useNavigation, useRouteLoaderData } from "react-router";
+import { Form, Link, useNavigation, useRouteLoaderData } from "react-router";
 import type { Route } from "./+types/admin.members";
 import type { loader as rootLoader } from "../root";
 import { PageHead } from "../components/Dash";
@@ -13,7 +13,7 @@ import { formatYear } from "../lib/registration";
 import { requirePermission } from "../lib/session.server";
 
 export function meta() {
-  return [{ title: "Roles & positions · Gibi Gubae" }];
+  return [{ title: "ጽህፈት ቤት · Roles & positions · Gibi Gubae" }];
 }
 
 /** Roles an admin picks by hand. "Department leader" is automatic: it comes from leading a department. */
@@ -150,9 +150,10 @@ export default function RolesPage({ loaderData, actionData }: Route.ComponentPro
   return (
     <section className="page wide">
       <PageHead
-        back={{ to: "/dashboard", label: "Dashboard" }}
-        title="Roles & positions"
+        back={{ to: "/account", label: "My dashboard" }}
+        title={<><span lang="am">ጽህፈት ቤት</span> · Roles & positions</>}
         sub={`${members.length} active members · changes apply within 5 minutes`}
+        actions={<Link to="/admin/telegram">🤖 Telegram bot</Link>}
       />
       <div className="card">
         <ul className="role-legend">

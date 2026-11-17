@@ -19,9 +19,8 @@ import { DEFAULT_LANG, langFromCookie } from "./lib/lang";
 import { asc, eq } from "drizzle-orm";
 import { getDb, schema } from "./db";
 import { getUser } from "./lib/session.server";
-import { can, hasDashboard } from "./lib/permissions";
-import { canListMembers, canManageDepartment, canManageDues, departmentName } from "./lib/departments";
-import { getLeaderDepartmentIds } from "./lib/departments.server";
+import { can } from "./lib/permissions";
+import { departmentName } from "./lib/departments";
 import "./app.css";
 
 export const links: Route.LinksFunction = () => [
@@ -37,13 +36,12 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   const { env } = context.cloudflare;
   const user = await getUser(request, env);
   const db = getDb(env.DB);
-  const [isMember, leaderOf, departments] = user
+  const [isMember, departments] = user
     ? await Promise.all([
         db.query.members.findFirst({ where: eq(schema.members.userId, user.id), columns: { id: true } }).then(Boolean),
-        getLeaderDepartmentIds(db, user.id),
         db.query.departments.findMany({ orderBy: asc(schema.departments.sortOrder), columns: { id: true, nameOm: true, nameAm: true } }),
       ])
-    : [false, [] as string[], []];
+    : [false, []];
   const role = user?.role ?? "member";
   return {
     lang: langFromCookie(request.headers.get("Cookie")),
@@ -52,13 +50,9 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     isMember,
     menu: user
       ? {
-          dashboard: hasDashboard(role) || leaderOf.length > 0,
-          members: canListMembers(role, leaderOf),
-          dues: canManageDues(role, leaderOf),
-          admin: can(role, "member:manage"),
-          fasts: can(role, "fast:scan"),
-          // Every department; admins manage all of them, leaders their own
-          departments: departments.map((d) => ({ ...d, manage: canManageDepartment(role, leaderOf, d.id) })),
+          // ጽህፈት ቤት: the three positions (and other admins) — roles & positions
+          office: can(role, "member:manage"),
+          departments,
         }
       : null,
   };
@@ -90,27 +84,18 @@ function Menu({ data, lang }: { data: NonNullable<ReturnType<typeof useRouteLoad
         </div>
         {data.user ? (
           <>
-            <NavLink to="/account">🏠 My dashboard</NavLink>
-            {m?.dashboard && <NavLink to="/dashboard">🗂️ Dashboard</NavLink>}
-            {m?.members && <NavLink to="/members">👥 Members</NavLink>}
-            {m?.dues && <NavLink to="/dues">💳 Contributions</NavLink>}
-            <NavLink to="/fasts">🍲 Fasts</NavLink>
-            {m?.admin && (
-              <>
-                <p className="drawer-section">Admin</p>
-                <NavLink to="/admin/registrations">📝 Registrations</NavLink>
-                <NavLink to="/admin/members">🎖️ Roles & positions</NavLink>
-                <NavLink to="/attendance">✅ Fellowship attendance</NavLink>
-                <NavLink to="/admin/telegram">🤖 Telegram bot</NavLink>
-              </>
+            {m?.office && (
+              <NavLink to="/admin/members" lang="am">
+                🏛️ ጽህፈት ቤት
+              </NavLink>
             )}
-            <p className="drawer-section">Departments</p>
             {m?.departments.map((d) => (
-              <NavLink key={d.id} to={d.manage ? `/departments/${d.id}` : "/departments"} lang={lang} end>
-                🏛️ {departmentName(d, lang)}{d.manage && <span className="drawer-tag">manage</span>}
+              <NavLink key={d.id} to={`/departments/${d.id}`} lang={lang}>
+                🏛️ {departmentName(d, lang)}
               </NavLink>
             ))}
             <p className="drawer-section" />
+            <NavLink to="/account">🏠 My dashboard</NavLink>
             <NavLink to="/" end>⛪ Home page</NavLink>
             <form method="post" action="/logout"><button className="link-btn drawer-signout">Sign out</button></form>
           </>
