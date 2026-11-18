@@ -20,6 +20,7 @@ import { countBy, matchesSearch, pickParam } from "../lib/dashboard";
 import { todayInAddis } from "../lib/departments";
 import { DEFAULT_LANG } from "../lib/lang";
 import { getDues, getPayAccount, setSetting } from "../lib/settings.server";
+import { ledgerIn } from "../lib/ledger.server";
 
 export function meta() {
   return [{ title: "Contributions · Gibi Gubae" }];
@@ -35,7 +36,7 @@ function parseMonth(v: string | null, fallback: EcMonth): EcMonth {
 export async function loader({ request, context }: Route.LoaderArgs) {
   const { env } = context.cloudflare;
   const db = getDb(env.DB);
-  await requireDues(request, env, db);
+  const access = await requireDues(request, env, db);
   const current = dueMonth(todayInAddis());
   const month = parseMonth(new URL(request.url).searchParams.get("month"), current);
   const [pending, pay, dues, account] = await Promise.all([pendingContributions(db), monthPayRows(db, month), getDues(db), getPayAccount(db)]);
@@ -49,17 +50,20 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     collected: pay.collected,
     dues,
     account,
+    canApprove: access.approveMoney,
+    canSet: access.setDues,
   };
 }
 
 export async function action({ request, context }: Route.ActionArgs) {
   const { env, ctx } = context.cloudflare;
   const db = getDb(env.DB);
-  const { user } = await requireDues(request, env, db);
+  const { user, approveMoney, setDues } = await requireDues(request, env, db);
   const form = await request.formData();
   const intent = form.get("intent");
 
   if (intent === "settings") {
+    if (!setDues) return { message: "Only ባች እና ዲፓርትመንት sets the amounts and the account." };
     const dues = duesSchema.safeParse({ student: form.get("student"), graduate: form.get("graduate") });
     const account = accountSchema.safeParse({ bank: form.get("bank"), number: form.get("number"), name: form.get("name"), note: form.get("note") });
     if (!dues.success || !account.success) return { message: "Check the amounts (whole birr) and account details." };
@@ -69,6 +73,7 @@ export async function action({ request, context }: Route.ActionArgs) {
   }
 
   if (intent === "approve" || intent === "reject") {
+    if (!approveMoney) return { message: "Only ሂሳብ እና ንብረት approves payments." };
     const id = String(form.get("id") ?? "");
     const c = await db.query.contributions.findFirst({ where: eq(schema.contributions.id, id), columns: { status: true, memberId: true, months: true, amount: true } });
     if (!c) throw new Response("Not found", { status: 404 });
@@ -83,6 +88,21 @@ export async function action({ request, context }: Route.ActionArgs) {
     ];
     // A rejected payment frees its months so the member can submit again
     if (next === "rejected") statements.push(db.delete(schema.contributionMonths).where(eq(schema.contributionMonths.contributionId, id)) as never);
+    // An approved one is copied into the ledger (kept even if the member is removed later)
+    if (next === "approved") {
+      const who = await db.query.members.findFirst({ where: eq(schema.members.id, c.memberId), columns: { fullName: true } });
+      statements.push(
+        ledgerIn(db, {
+          amount: c.amount,
+          category: "contribution",
+          description: `Monthly contribution · ${c.months.map(([y, mo]) => formatMonth({ year: y, month: mo }, "am")).join(", ")}`,
+          date: todayInAddis(),
+          person: who?.fullName ?? "",
+          refId: id,
+          by: user.id,
+        }) as never,
+      );
+    }
     await db.batch(statements as [(typeof statements)[number], ...typeof statements]);
 
     const m = await db
@@ -111,7 +131,7 @@ export default function Dues({ loaderData, actionData }: Route.ComponentProps) {
   const lang = root?.lang ?? DEFAULT_LANG;
   const busy = useNavigation().state !== "idle";
   const [params] = useSearchParams();
-  const { month, current, prev, next, pending, rows, collected, dues, account } = loaderData;
+  const { month, current, prev, next, pending, rows, collected, dues, account, canApprove, canSet } = loaderData;
   const status = pickParam(params.get("status"), ["approved", "pending", "unpaid"] as const);
   const kind = pickParam(params.get("kind"), ["student", "graduate"] as const);
   const q = params.get("q") ?? "";
@@ -144,9 +164,9 @@ export default function Dues({ loaderData, actionData }: Route.ComponentProps) {
           </div>
           {next ? <Link to={keep({ month: mk(next) })} className="btn btn-quiet btn-sm" aria-label="Next month" preventScrollReset>→</Link> : <span className="btn btn-quiet btn-sm" aria-disabled="true">→</span>}
         </div>
-        <details className="dues-settings">
+        <details className="dues-settings" onToggle={(e) => { if (!canSet) e.currentTarget.open = false; }}>
           <summary>
-            Students <b>{dues.student} birr</b> · Graduated <b>{dues.graduate} birr</b> · {account.number ? <>{account.bank} <b>{account.number}</b> ({account.name})</> : <span className="pill pill-pay-unpaid">No account set</span>} <span className="dues-edit">✏️ Edit</span>
+            Students <b>{dues.student} birr</b> · Graduated <b>{dues.graduate} birr</b> · {account.number ? <>{account.bank} <b>{account.number}</b> ({account.name})</> : <span className="pill pill-pay-unpaid">No account set</span>} {canSet && <span className="dues-edit">✏️ Edit</span>}
           </summary>
           <Form method="post" className="form">
             <input type="hidden" name="intent" value="settings" />
@@ -196,18 +216,28 @@ export default function Dues({ loaderData, actionData }: Route.ComponentProps) {
         ) : (
           <div className="table-wrap">
             <table className="table-oneline">
-              <thead><tr><th>Member</th><th>Status</th><th>Payment</th><th>Phone</th><th>Telegram</th></tr></thead>
+              <thead><tr><th>Member</th><th>Status</th><th>Payment</th></tr></thead>
               <tbody>
                 {shown.map((r) => (
                   <tr key={r.id}>
-                    <td><strong>{r.fullName}</strong><span className="who-id">{r.studentId} · {r.kind === "graduate" ? "Graduated" : "Student"}</span></td>
+                    <td className="wrap">
+                      <strong>{r.fullName}</strong>
+                      <span className="who-id">{r.studentId} · {r.kind === "graduate" ? "Graduated" : "Student"}</span>
+                      {(r.phone || r.telegramUsername) && (
+                        <span className="who-id">
+                          {r.phone && <a href={`tel:${r.phone}`}>{r.phone}</a>}
+                          {r.phone && r.telegramUsername && " · "}
+                          {r.telegramUsername && <a href={`https://t.me/${r.telegramUsername}`} target="_blank" rel="noreferrer">@{r.telegramUsername}</a>}
+                        </span>
+                      )}
+                    </td>
                     <td><span className={`pill pill-pay-${r.status}`}>{STATUS_LABEL[r.status]}</span></td>
                     <td>
                       {r.payment ? (
                         <span className="pay-cell">
                           <a href={`/receipts/${r.payment.id}`} target="_blank" rel="noreferrer">🧾 {r.payment.amount} birr</a>
                           {r.payment.months.length > 1 && <span className="muted" lang={lang}> · {r.payment.months.length} months</span>}
-                          {r.status === "pending" && (
+                          {r.status === "pending" && canApprove && (
                             <Form method="post" className="row-actions" preventScrollReset>
                               <input type="hidden" name="id" value={r.payment.id} />
                               <button name="intent" value="approve" className="btn btn-primary btn-sm" disabled={busy}>Approve</button>
@@ -231,8 +261,6 @@ export default function Dues({ loaderData, actionData }: Route.ComponentProps) {
                         </span>
                       ) : <span className="muted">—</span>}
                     </td>
-                    <td>{r.phone ? <a href={`tel:${r.phone}`}>{r.phone}</a> : "—"}</td>
-                    <td>{r.telegramUsername ? <a href={`https://t.me/${r.telegramUsername}`} target="_blank" rel="noreferrer">@{r.telegramUsername}</a> : "—"}</td>
                   </tr>
                 ))}
               </tbody>

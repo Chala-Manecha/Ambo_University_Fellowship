@@ -38,9 +38,38 @@ export function canListMembers(role: Role, leaderOf: readonly string[]) {
   return role === "admin" || leaderOf.includes(MEMBER_AFFAIRS) || leaderOf.includes(BATCH_DEPT);
 }
 
-/** Monthly contributions (rates, the account, approving payments): admins and ባች እና ዲፓርትመንት leaders. */
+export const SONGS_DEPT = "faaruu"; // መዝሙር ክፍል
+export const FINANCE_DEPT = "herrega"; // ሂሳብ እና ንብረት ክፍል
+export const AUDIT_DEPT = "odiitii"; // ኦዲት እና ምርመራ
+
+/** Monthly contributions and gifts, read-only: admins, ባች እና ዲፓርትመንት, ሂሳብ እና ንብረት and ኦዲት leaders. */
 export function canManageDues(role: Role, leaderOf: readonly string[]) {
+  return role === "admin" || leaderOf.includes(BATCH_DEPT) || leaderOf.includes(FINANCE_DEPT) || leaderOf.includes(AUDIT_DEPT);
+}
+
+/** Monthly amounts and the fellowship account: admins and ባች እና ዲፓርትመንት leaders. */
+export function canSetDues(role: Role, leaderOf: readonly string[]) {
   return role === "admin" || leaderOf.includes(BATCH_DEPT);
+}
+
+/** Approving money (monthly contributions, ለመርዳት gifts), the ledger and property: admins and ሂሳብ እና ንብረት leaders. */
+export function canApproveMoney(role: Role, leaderOf: readonly string[]) {
+  return role === "admin" || leaderOf.includes(FINANCE_DEPT);
+}
+
+/** Songs: admins and መዝሙር ክፍል leaders add and release them. */
+export function canManageSongs(role: Role, leaderOf: readonly string[]) {
+  return role === "admin" || leaderOf.includes(SONGS_DEPT);
+}
+
+/** The audit report: admins and ኦዲት እና ምርመራ leaders. */
+export function canAudit(role: Role, leaderOf: readonly string[]) {
+  return role === "admin" || leaderOf.includes(AUDIT_DEPT);
+}
+
+/** Removing a member from the system: ጽህፈት ቤት (admins) and አባላት ጉዳይ leaders. */
+export function canDeleteMembers(role: Role, leaderOf: readonly string[]) {
+  return role === "admin" || leaderOf.includes(MEMBER_AFFAIRS);
 }
 
 /** Admins manage every department; leaders manage only the ones they lead. */
@@ -50,7 +79,8 @@ export function canManageDepartment(role: Role, leaderOf: readonly string[], dep
 
 /** Who may take attendance for a session: its department's leaders, or admins for whole-fellowship sessions. */
 export function canTakeAttendance(role: Role, leaderOf: readonly string[], departmentId: string | null) {
-  if (departmentId === null) return can(role, "attendance:fellowship");
+  // Whole-fellowship sessions: admins and ባች እና ዲፓርትመንት leaders
+  if (departmentId === null) return can(role, "attendance:fellowship") || leaderOf.includes(BATCH_DEPT);
   return canManageDepartment(role, leaderOf, departmentId);
 }
 

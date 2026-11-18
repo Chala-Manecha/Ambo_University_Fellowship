@@ -71,6 +71,13 @@
       "when": 1794957793267,
       "tag": "0009_activate_chosen_departments",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1794993242462,
+      "tag": "0010_songs_money_property",
+      "breakpoints": true
     }
   ]
 }

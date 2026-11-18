@@ -336,3 +336,90 @@ export const telegramLinkTokens = sqliteTable("telegram_link_tokens", {
     .references(() => user.id, { onDelete: "cascade" }),
   expiresAt: integer("expires_at").notNull(), // ms
 });
+
+/* ---------- Songs (መዝሙር ክፍል) ---------- */
+
+/** A song the መዝሙር ክፍል adds: title, words and an optional recording (R2). Members see released ones. */
+export const songs = sqliteTable(
+  "songs",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    title: text("title").notNull(),
+    body: text("body").notNull(),
+    audioKey: text("audio_key"),
+    audioType: text("audio_type"),
+    released: integer("released", { mode: "boolean" }).notNull().default(false),
+    createdBy: text("created_by").references(() => user.id, { onDelete: "set null" }),
+    ...timestamps,
+  },
+  (t) => [index("songs_released_idx").on(t.released)],
+);
+
+/* ---------- Money: gifts (ለመርዳት) and the ledger ---------- */
+
+/** A gift a member sends to the fellowship account, with a receipt screenshot. ሂሳብ እና ንብረት approves it. */
+export const donations = sqliteTable(
+  "donations",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    // Kept if the member is later removed, so the money record stays
+    memberId: text("member_id").references(() => members.id, { onDelete: "set null" }),
+    donorName: text("donor_name").notNull(),
+    amount: integer("amount").notNull(), // birr
+    note: text("note"),
+    receiptKey: text("receipt_key").notNull(),
+    status: text("status", { enum: ["pending", "approved", "rejected"] }).notNull().default("pending"),
+    reviewNote: text("review_note"),
+    reviewedBy: text("reviewed_by").references(() => user.id, { onDelete: "set null" }),
+    reviewedAt: integer("reviewed_at", { mode: "timestamp_ms" }),
+    ...timestamps,
+  },
+  (t) => [index("donations_status_idx").on(t.status)],
+);
+
+/**
+ * Every birr in and out. Approved contributions and gifts are copied here when approved, so
+ * money history stays even if a member is removed. ሂሳብ እና ንብረት adds money going out.
+ */
+export const ledger = sqliteTable(
+  "ledger",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    direction: text("direction", { enum: ["in", "out"] }).notNull(),
+    amount: integer("amount").notNull(), // birr, always positive
+    category: text("category", { enum: ["contribution", "donation", "expense", "other"] }).notNull(),
+    description: text("description").notNull(),
+    date: text("date").notNull(), // Gregorian YYYY-MM-DD
+    person: text("person"), // who paid / who was paid
+    refId: text("ref_id"), // the contribution or gift it came from
+    recordedBy: text("recorded_by").references(() => user.id, { onDelete: "set null" }),
+    ...timestamps,
+  },
+  (t) => [index("ledger_date_idx").on(t.date), uniqueIndex("ledger_ref_unique").on(t.refId)],
+);
+
+/** Things a department owns, recorded by ሂሳብ እና ንብረት. */
+export const properties = sqliteTable(
+  "properties",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    departmentId: text("department_id")
+      .notNull()
+      .references(() => departments.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    quantity: integer("quantity").notNull().default(1),
+    description: text("description"),
+    source: text("source", { enum: ["new", "past_leaders"] }).notNull(),
+    recordedBy: text("recorded_by").references(() => user.id, { onDelete: "set null" }),
+    ...timestamps,
+  },
+  (t) => [index("properties_department_idx").on(t.departmentId)],
+);

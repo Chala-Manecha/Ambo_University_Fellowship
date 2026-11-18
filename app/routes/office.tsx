@@ -39,16 +39,26 @@ export default function Office({ loaderData }: Route.ComponentProps) {
       ],
     },
     {
-      label: "Programs",
+      label: "Money",
       items: [
         { to: "/office/dues", label: "Contributions", icon: "💳" },
+        { to: "/office/gifts", label: "ለመርዳት", icon: "🤲" },
+        { to: "/office/ledger", label: "Money in & out", icon: "📒" },
+        { to: "/office/properties", label: "Property", icon: "📦" },
+      ],
+    },
+    {
+      label: "Programs",
+      items: [
         { to: "/office/fasts", label: "Fasts", icon: "🍲" },
         { to: "/office/attendance", label: "Attendance", icon: "✅" },
+        { to: "/office/songs", label: "Songs", icon: "🎵" },
       ],
     },
     {
       label: "Admin",
       items: [
+        { to: "/office/audit", label: "Audit", icon: "🔎" },
         { to: "/office/overview", label: "Overview", icon: "📊" },
         { to: "/office/telegram", label: "Telegram bot", icon: "🤖" },
       ],

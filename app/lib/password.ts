@@ -1,13 +1,14 @@
 /**
  * Website passwords (sign-in with student ID + password).
- * PBKDF2-SHA256 through WebCrypto (native code). 20,000 rounds keeps a sign-in inside the
- * Workers free plan's CPU limit; repeated wrong guesses are locked out (login-limit.ts).
+ * PBKDF2-SHA256 through WebCrypto (native code). 10,000 rounds (~3 ms) keeps a sign-in, and a
+ * registration that hashes and then verifies, inside the Workers free plan's 10 ms CPU limit;
+ * repeated wrong guesses are locked out (login-limit.ts).
  * The round count is stored in each hash, so it can be raised later (e.g. on a paid plan)
  * and old hashes keep working. Tested in tests/password.test.ts.
  */
 import { z } from "zod";
 
-export const PBKDF2_ROUNDS = 20_000;
+export const PBKDF2_ROUNDS = 10_000;
 const enc = new TextEncoder();
 
 export const passwordSchema = z.string().min(8, "Use at least 8 characters").max(128, "Use at most 128 characters");

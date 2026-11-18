@@ -1,5 +1,5 @@
 import type { Db } from "../db";
-import { canListMembers, canManageDues } from "./departments";
+import { canApproveMoney, canListMembers, canManageDues, canSetDues } from "./departments";
 import { getLeaderDepartmentIds } from "./departments.server";
 import { requireUser } from "./session.server";
 
@@ -7,7 +7,17 @@ import { requireUser } from "./session.server";
 export async function getAccess(request: Request, env: Env, db: Db) {
   const user = await requireUser(request, env);
   const leaderOf = await getLeaderDepartmentIds(db, user.id);
-  return { user, leaderOf, listMembers: canListMembers(user.role, leaderOf), manageDues: canManageDues(user.role, leaderOf) };
+  return {
+    user,
+    leaderOf,
+    listMembers: canListMembers(user.role, leaderOf),
+    /** see contributions and gifts */
+    manageDues: canManageDues(user.role, leaderOf),
+    /** change the monthly amounts and the account */
+    setDues: canSetDues(user.role, leaderOf),
+    /** approve or reject money */
+    approveMoney: canApproveMoney(user.role, leaderOf),
+  };
 }
 
 export async function requireMemberList(request: Request, env: Env, db: Db) {

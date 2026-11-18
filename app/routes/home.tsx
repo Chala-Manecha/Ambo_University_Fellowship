@@ -25,7 +25,11 @@ export default function Home() {
         <p className="hero-tagline">{t.tagline}</p>
         <div className="hero-actions" lang="en">
           {root?.isMember ? (
-            <Link to="/account" className="btn btn-primary">Open my account</Link>
+            <>
+              <Link to="/account" className="btn btn-primary">Open my account</Link>
+              <Link to="/songs" className="btn btn-quiet">🎵 <span lang="am">መዝሙሮች</span></Link>
+              <Link to="/give" className="btn btn-quiet">🤲 <span lang="am">ለመርዳት</span></Link>
+            </>
           ) : (
             <Link to="/register" className="btn btn-primary">Register as a member</Link>
           )}

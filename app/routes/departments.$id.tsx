@@ -16,6 +16,13 @@ import {
   canListMembers,
   canSeeLanguages,
   LANGUAGE_DEPT,
+  AUDIT_DEPT,
+  canApproveMoney,
+  canAudit,
+  canManageSongs,
+  canTakeAttendance,
+  FINANCE_DEPT,
+  SONGS_DEPT,
   canManageDepartment,
   canManageDues,
   MEMBER_AFFAIRS,
@@ -82,7 +89,26 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
   }
   if (dept.id === BATCH_DEPT) {
     if (canManageDues(user.role, leaderOf)) tools.push({ to: `${base}/dues`, label: "Contributions", icon: "💳" });
-    if (can(user.role, "attendance:fellowship")) tools.push({ to: `${base}/attendance`, label: "Attendance", icon: "✅" });
+    if (canManageDues(user.role, leaderOf)) tools.push({ to: `${base}/gifts`, label: "ለመርዳት", icon: "🤲" });
+    if (canTakeAttendance(user.role, leaderOf, null)) tools.push({ to: `${base}/attendance`, label: "Attendance", icon: "✅" });
+  }
+  if (dept.id === FINANCE_DEPT && canApproveMoney(user.role, leaderOf)) {
+    tools.push(
+      { to: `${base}/dues`, label: "Contributions", icon: "💳" },
+      { to: `${base}/gifts`, label: "ለመርዳት", icon: "🤲" },
+      { to: `${base}/ledger`, label: "Money in & out", icon: "📒" },
+      { to: `${base}/properties`, label: "Property", icon: "📦" },
+    );
+  }
+  if (dept.id === AUDIT_DEPT && canAudit(user.role, leaderOf)) {
+    tools.push(
+      { to: `${base}/audit`, label: "Audit report", icon: "🔎" },
+      { to: `${base}/ledger`, label: "Money in & out", icon: "📒" },
+      { to: `${base}/properties`, label: "Property", icon: "📦" },
+    );
+  }
+  if (dept.id === SONGS_DEPT && canManageSongs(user.role, leaderOf)) {
+    tools.push({ to: `${base}/songs`, label: "Songs", icon: "🎵" });
   }
   if (dept.id === LANGUAGE_DEPT && canSeeLanguages(user.role, leaderOf)) {
     tools.push({ to: `${base}/languages`, label: "Members by language", icon: "🗣️" });
@@ -253,7 +279,15 @@ export default function Department({ loaderData, actionData }: Route.ComponentPr
   const groups: PanelGroup[] = [
     { label: "Fellowship", items: tools },
     // ባች እና ዲፓርትመንት takes the whole fellowship's attendance, so it needs only that one
-    { label: "Department", items: tools.some((t) => t.to.endsWith("/attendance")) ? [] : [{ to: `${base}?tab=attendance`, label: "Attendance", icon: "✅" }] },
+    {
+      label: "Department",
+      items: [
+        // ባች እና ዲፓርትመንት takes the whole fellowship's attendance, so it needs only that one
+        ...(tools.some((t) => t.to.endsWith("/attendance")) ? [] : [{ to: `${base}?tab=attendance`, label: "Attendance", icon: "✅" }]),
+        // What this department owns (ሂሳብ እና ንብረት records it)
+        ...(tools.some((t) => t.to.endsWith("/properties")) ? [] : [{ to: `${base}/property`, label: "Property", icon: "📦" }]),
+      ],
+    },
   ];
   return (
     <section className="page wide panel-page">
@@ -271,7 +305,7 @@ export default function Department({ loaderData, actionData }: Route.ComponentPr
       {message && <p className="notice" role="status">{message}</p>}
       <Counts
         items={[
-          { to: `${base}?tab=members`, n: active.length, label: active.length === 1 ? "Member" : "Members", active: tab === "members" },
+          { to: `${base}?tab=members`, n: active.length, label: "ንዑሳን", active: tab === "members" },
           { to: `${base}?tab=requests`, n: pending.length, label: pending.length === 1 ? "Join request" : "Join requests", active: tab === "requests", alert: true },
         ]}
       />
@@ -283,13 +317,11 @@ export default function Department({ loaderData, actionData }: Route.ComponentPr
           ) : (
             <div className="table-wrap">
               <table className="table-oneline">
-                <thead><tr><th>Name</th><th>Phone</th><th>Telegram</th><th><span className="visually-hidden">Actions</span></th></tr></thead>
+                <thead><tr><th>Name</th><th><span className="visually-hidden">Actions</span></th></tr></thead>
                 <tbody>
                   {pending.map((p) => (
                     <tr key={p.id}>
-                      <td>{p.fullName}</td>
-                      <td><a href={`tel:${p.phone}`}>{p.phone}</a></td>
-                      <td>{p.telegramUsername ? <a href={`https://t.me/${p.telegramUsername}`} target="_blank" rel="noreferrer">@{p.telegramUsername}</a> : "—"}</td>
+                      <td className="wrap"><strong>{p.fullName}</strong><Contact phone={p.phone} telegram={p.telegramUsername} /></td>
                       <td>
                         <Form method="post" className="row-actions">
                           <input type="hidden" name="rowId" value={p.id} />
@@ -340,28 +372,26 @@ export default function Department({ loaderData, actionData }: Route.ComponentPr
           ) : (
             <div className="table-wrap">
               <table className="table-oneline">
-                <thead><tr><th>Name</th><th>Phone</th><th>Telegram</th><th className="num">Attendance</th><th><span className="visually-hidden">Actions</span></th></tr></thead>
+                <thead><tr><th>Name</th><th className="num">Attendance</th></tr></thead>
                 <tbody>
                   {active.map((p) => (
                     <tr key={p.id}>
-                      <td>{p.fullName} {p.role === "leader" && <span className="pill pill-active">Leader</span>}</td>
-                      <td><a href={`tel:${p.phone}`}>{p.phone}</a></td>
-                      <td>{p.telegramUsername ? <a href={`https://t.me/${p.telegramUsername}`} target="_blank" rel="noreferrer">@{p.telegramUsername}</a> : "—"}</td>
-                      <td className="num">{p.rate.percent === null ? "—" : `${p.rate.percent}% (${p.rate.present}/${p.rate.present + p.rate.absent})`}</td>
-                      <td>
-                        <Form method="post" className="row-actions">
-                          <input type="hidden" name="rowId" value={p.id} />
-                          {isAdmin &&
-                            (p.role === "leader" ? (
-                              <button name="intent" value="remove-leader" className="btn btn-quiet btn-sm" disabled={busy}>Remove leader</button>
-                            ) : (
-                              <button name="intent" value="make-leader" className="btn btn-quiet btn-sm" disabled={busy}>Make leader</button>
-                            ))}
-                          {(isAdmin || p.role !== "leader") && (
-                            <button name="intent" value="remove" className="btn btn-quiet btn-sm" disabled={busy}>Remove</button>
-                          )}
-                        </Form>
+                      <td className="wrap">
+                        <strong>{p.fullName}</strong> {p.role === "leader" && <span className="pill pill-active">Leader</span>}
+                        <Contact phone={p.phone} telegram={p.telegramUsername} />
+                        {/* Leaders are chosen in ጽህፈት ቤት → Roles & positions */}
+                        {(isAdmin || p.role !== "leader") && (
+                          <Form
+                            method="post"
+                            preventScrollReset
+                            onSubmit={(e) => { if (!window.confirm(`Remove ${p.fullName} from this department?`)) e.preventDefault(); }}
+                          >
+                            <input type="hidden" name="rowId" value={p.id} />
+                            <button name="intent" value="remove" className="link-btn danger-link small-link" disabled={busy}>Remove from department</button>
+                          </Form>
+                        )}
                       </td>
+                      <td className="num">{p.rate.percent === null ? "—" : <>{p.rate.percent}%<span className="who-id">{p.rate.present}/{p.rate.present + p.rate.absent}</span></>}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -374,6 +404,18 @@ export default function Department({ loaderData, actionData }: Route.ComponentPr
       )}
       </div>
     </section>
+  );
+}
+
+/** Phone and Telegram under a name, so tables fit a phone screen. */
+function Contact({ phone, telegram }: { phone: string; telegram: string | null }) {
+  if (!phone && !telegram) return null;
+  return (
+    <span className="who-id contact">
+      {phone && <a href={`tel:${phone}`}>{phone}</a>}
+      {phone && telegram && " · "}
+      {telegram && <a href={`https://t.me/${telegram}`} target="_blank" rel="noreferrer">@{telegram}</a>}
+    </span>
   );
 }
 

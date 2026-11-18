@@ -81,20 +81,8 @@ export async function monthPayRows(db: Db, month: EcMonth) {
   return { rows, collected };
 }
 
-/** Telegram ids of ባች እና ዲፓርትመንት leaders and admins (who review payments). */
-export async function duesReviewerTelegramIds(db: Db) {
-  const leaders = await getDepartmentLeaderTelegramIds(db, BATCH_DEPT);
-  const admins = await db
-    .select({ t: schema.user.telegramId })
-    .from(schema.user)
-    .where(eq(schema.user.role, "admin"));
-  return [...new Set([...leaders, ...admins.map((a) => a.t).filter((t): t is string => Boolean(t))])];
-}
-
-export async function notifyReviewers(env: Env, db: Db, text: string) {
-  const ids = await duesReviewerTelegramIds(db);
-  await Promise.all(ids.map((id) => sendMessage(env, id, text)));
-}
+/** New payments go to the people who approve money (ሂሳብ እና ንብረት and admins). */
+export { notifyMoneyReviewers as notifyReviewers } from "./ledger.server";
 
 export async function pendingContributions(db: Db) {
   return db

@@ -33,7 +33,7 @@ async function deflate(data: Uint8Array) {
 }
 
 /** A black-on-white PNG of a QR code (for sending as a Telegram photo). */
-export async function qrPng(text: string, scale = 12, quiet = 4) {
+export async function qrPng(text: string, scale = 10, quiet = 4) {
   const { data, size } = encode(text);
   const side = (size + quiet * 2) * scale;
   const raw = new Uint8Array((side + 1) * side); // one filter byte (0) per row, then grey pixels

@@ -269,6 +269,11 @@ export default function Account({ loaderData, actionData }: Route.ComponentProps
         </p>
       </header>
 
+      <nav className="member-quick" aria-label="Quick links">
+        <Link to="/songs" className="btn btn-quiet">🎵 <span lang="am">መዝሙሮች</span></Link>
+        <Link to="/give" className="btn btn-primary">🤲 <span lang="am">ለመርዳት</span></Link>
+      </nav>
+
       {d.flags.registered && <p className="notice" role="status">Registration submitted.</p>}
       {d.flags.updated && <p className="notice" role="status">Details saved.</p>}
       {d.flags.password && <p className="notice" role="status">Password saved. You can sign in on the website with your student ID.</p>}
@@ -371,7 +376,7 @@ export default function Account({ loaderData, actionData }: Route.ComponentProps
               {d.departments.map((x) => (
                 <li key={x.id}>
                   <span lang={lang}>{departmentName(x, lang)}</span>{" "}
-                  <span className={`pill pill-${x.status}`}>{x.status === "pending" ? "Request sent" : x.role === "leader" ? "Leader" : "Member"}</span>
+                  <span className={`pill pill-${x.status}`}>{x.status === "pending" ? "Request sent" : x.role === "leader" ? "Leader" : "ንዑስ"}</span>
                   {x.role === "leader" && x.status === "active" && <> · <Link to={`/departments/${x.id}`}>Manage</Link></>}
                 </li>
               ))}

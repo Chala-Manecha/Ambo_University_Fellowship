@@ -55,14 +55,18 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
   const days = fastDays(fast.startDate, fast.endDate);
   const i = days.indexOf(day);
 
+  // Each tab runs only the queries it shows: on the free plan every row read counts
+  const view = new URL(request.url).searchParams.get("tab") ?? "registered";
   const [registrants, totals] = await Promise.all([
     loadRegistrants(db, fast.id),
-    // Every meal each person has eaten in this fast so far (the history behind the daily table)
-    db
-      .select({ memberId: schema.fastCheckins.memberId, meals: sql<number>`count(*)`, days: sql<number>`count(distinct ${schema.fastCheckins.date})` })
-      .from(schema.fastCheckins)
-      .where(eq(schema.fastCheckins.fastId, fast.id))
-      .groupBy(schema.fastCheckins.memberId),
+    // Every meal each person has eaten in this fast so far (only the Registered list shows it)
+    view === "registered"
+      ? db
+          .select({ memberId: schema.fastCheckins.memberId, meals: sql<number>`count(*)`, days: sql<number>`count(distinct ${schema.fastCheckins.date})` })
+          .from(schema.fastCheckins)
+          .where(eq(schema.fastCheckins.fastId, fast.id))
+          .groupBy(schema.fastCheckins.memberId)
+      : Promise.resolve([] as { memberId: string; meals: number; days: number }[]),
   ]);
   const totalBy = new Map(totals.map((t) => [t.memberId, t]));
   const eaten = await db
@@ -72,7 +76,7 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
   const eatenSet = new Set(eaten.map((e) => `${e.memberId}:${e.meal}`));
   // Scan log for the shown day: who ate which meal, and who scanned them
   const scannerMember = alias(schema.members, "scanner_member");
-  const log = await db
+  const log = view !== "scans" ? [] : await db
     .select({
       memberId: schema.fastCheckins.memberId,
       meal: schema.fastCheckins.meal,

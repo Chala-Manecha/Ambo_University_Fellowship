@@ -7,7 +7,15 @@ import { EcDatePicker } from "../components/EcDatePicker";
 import { formatEc, isoToEc } from "../lib/ethiopian-date";
 import { getDb, schema } from "../db";
 import { sessionSchema, todayInAddis } from "../lib/departments";
-import { requirePermission } from "../lib/session.server";
+import { getAccess } from "../lib/access.server";
+import { canTakeAttendance } from "../lib/departments";
+
+/** Whole-fellowship attendance: admins and ባች እና ዲፓርትመንት leaders. */
+async function requireFellowshipAttendance(request: Request, env: Env) {
+  const { user, leaderOf } = await getAccess(request, env, getDb(env.DB));
+  if (!canTakeAttendance(user.role, leaderOf, null)) throw new Response("You don't have access to this page.", { status: 403 });
+  return user;
+}
 
 export function meta() {
   return [{ title: "Fellowship attendance · Gibi Gubae" }];
@@ -16,7 +24,7 @@ export function meta() {
 /** Whole-fellowship sessions (no department), taken by admins. */
 export async function loader({ request, context }: Route.LoaderArgs) {
   const { env } = context.cloudflare;
-  await requirePermission(request, env, "attendance:fellowship");
+  await requireFellowshipAttendance(request, env);
   const db = getDb(env.DB);
   const sessions = await db
     .select({ id: schema.attendanceSessions.id, title: schema.attendanceSessions.title, date: schema.attendanceSessions.date })
@@ -36,7 +44,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
 
 export async function action({ request, context }: Route.ActionArgs) {
   const { env } = context.cloudflare;
-  const user = await requirePermission(request, env, "attendance:fellowship");
+  const user = await requireFellowshipAttendance(request, env);
   const form = await request.formData();
   const parsed = sessionSchema.safeParse({ title: form.get("title"), date: form.get("date") });
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Check the session details." };

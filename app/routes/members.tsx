@@ -15,7 +15,9 @@ import { loadMemberList } from "../lib/members.server";
 import { can } from "../lib/permissions";
 import { formatYear } from "../lib/registration";
 import { reviewRegistration } from "../lib/registrations.server";
-import { requirePermission } from "../lib/session.server";
+import { getAccess } from "../lib/access.server";
+import { canDeleteMembers } from "../lib/departments";
+import { deleteMember } from "../lib/member-delete.server";
 
 export function meta() {
   return [{ title: "Members · Gibi Gubae" }];
@@ -24,7 +26,7 @@ export function meta() {
 export async function loader({ request, context }: Route.LoaderArgs) {
   const { env } = context.cloudflare;
   const db = getDb(env.DB);
-  const { user } = await requireMemberList(request, env, db);
+  const { user, leaderOf } = await requireMemberList(request, env, db);
   const [members, departments] = await Promise.all([
     loadMemberList(db),
     db.query.departments.findMany({ orderBy: asc(schema.departments.sortOrder) }),
@@ -35,17 +37,26 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     members: members.filter((m) => m.status === "active" || (canSeePending && m.status === "pending")),
     departments: departments.map((d) => ({ id: d.id, nameOm: d.nameOm, nameAm: d.nameAm })),
     canSeePending,
+    canDelete: canDeleteMembers(user.role, leaderOf),
   };
 }
 
-/** Approve or decline a registration from the "Waiting for review" list. */
+/** Approve or decline a registration from "Waiting for review", or remove a member from the system. */
 export async function action({ request, context }: Route.ActionArgs) {
   const { env, ctx } = context.cloudflare;
-  const reviewer = await requirePermission(request, env, "registration:review");
+  const db = getDb(env.DB);
+  const { user, leaderOf } = await getAccess(request, env, db);
   const form = await request.formData();
+  const memberId = String(form.get("memberId") ?? "");
+  if (form.get("intent") === "delete") {
+    if (!canDeleteMembers(user.role, leaderOf)) throw new Response("Only ጽህፈት ቤት and አባላት ጉዳይ can remove members.", { status: 403 });
+    const r = await deleteMember(env, db, memberId, user.id);
+    return { message: r.ok ? `${r.name} was removed from the system.` : r.error };
+  }
+  if (!can(user.role, "registration:review")) throw new Response("You can't review registrations.", { status: 403 });
   const decision = form.get("decision");
   if (decision !== "approve" && decision !== "reject") throw new Response("Unknown decision", { status: 400 });
-  return reviewRegistration(env, ctx, getDb(env.DB), reviewer.id, String(form.get("memberId") ?? ""), decision);
+  return reviewRegistration(env, ctx, db, user.id, memberId, decision);
 }
 
 const yearLabel = (k: (typeof YEAR_KEYS)[number]) => (k === "g" ? "Graduated" : `Year ${k}`);
@@ -56,7 +67,7 @@ export default function Members({ loaderData, actionData }: Route.ComponentProps
   const [params] = useSearchParams();
   const location = useLocation();
   const busy = useNavigation().state !== "idle";
-  const { members, departments, canSeePending } = loaderData;
+  const { members, departments, canSeePending, canDelete } = loaderData;
   const f = filterMembers(members, params, departments.map((d) => d.id), canSeePending);
   const deptById = new Map(departments.map((d) => [d.id, d]));
   const counts = f.counts as unknown as { gender: Record<string, number>; year: Record<string, number> };
@@ -112,6 +123,7 @@ export default function Members({ loaderData, actionData }: Route.ComponentProps
                   <th>Member</th>
                   {pendingView && <th><span className="visually-hidden">Decision</span></th>}
                   <th>Gender</th><th>Study</th><th>Born</th><th>Phone</th><th>Telegram</th><th>Departments</th>
+                  {canDelete && <th><span className="visually-hidden">Remove</span></th>}
                 </tr>
               </thead>
               <tbody>
@@ -151,6 +163,21 @@ export default function Members({ loaderData, actionData }: Route.ComponentProps
                         ? m.departments.map((id) => { const d = deptById.get(id); return d ? departmentName(d, lang) : id; }).join(", ")
                         : <span className="muted">—</span>}
                     </td>
+                    {canDelete && (
+                      <td>
+                        <Form
+                          method="post"
+                          preventScrollReset
+                          onSubmit={(e) => {
+                            if (!window.confirm(`Remove ${m.fullName} (${m.studentId}) from the system completely?\n\nTheir account, Telegram link, photo, payments and records are deleted. This can't be undone.`)) e.preventDefault();
+                          }}
+                        >
+                          <input type="hidden" name="intent" value="delete" />
+                          <input type="hidden" name="memberId" value={m.id} />
+                          <button className="link-btn danger-link" disabled={busy} aria-label={`Remove ${m.fullName}`}>🗑 Remove</button>
+                        </Form>
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
