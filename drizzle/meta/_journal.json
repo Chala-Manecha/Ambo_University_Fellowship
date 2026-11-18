@@ -64,6 +64,13 @@
       "when": 1794957792267,
       "tag": "0008_fast_scanners",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1794957793267,
+      "tag": "0009_activate_chosen_departments",
+      "breakpoints": true
     }
   ]
 }

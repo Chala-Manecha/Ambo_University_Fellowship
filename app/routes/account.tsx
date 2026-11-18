@@ -251,6 +251,7 @@ export default function Account({ loaderData, actionData }: Route.ComponentProps
           <div className="page-head-actions">
             {d.staff && <Link to="/dashboard">🗂️ Dashboard</Link>}
             <Link to="/account/password">⚙️ Password</Link>
+            <form method="post" action="/logout"><button className="head-signout">↪ Sign out</button></form>
           </div>
         </div>
         <div className="member-id">

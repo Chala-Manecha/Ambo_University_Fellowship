@@ -10,7 +10,8 @@ export const BOT = {
     "Baga nagaan dhuftan! Yaa'ii Mooraa Kaampaasii Hacaaluu Hundeessaa. Galmaa'uuf ykn akkaawuntii keessan banuuf armaan gadi tuqaa.\n\n" +
     "እንኳን በደኅና መጡ! ሃጫሉ ሁንዴሳ ካምፓስ ግቢ ጉባኤ። ለመመዝገብ ወይም መለያዎን ለመክፈት ከታች ይጫኑ።",
   openButton: "Akkaawuntii koo bani / መለያዬን ክፈት",
-  linked: "✅ Telegram keessan akkaawuntii keessanitti hidhameera. Amma marsariitii irratti itti fufaa.\n\n✅ ቴሌግራምዎ ከመለያዎ ጋር ተገናኝቷል። አሁን በድረ-ገጹ ይቀጥሉ።",
+  linked:
+    "✅ Galmeen keessan xumurameera. QR miseensummaa keessan armaan olitti jira — kaafee irratti agarsiisaa. Marsariitii deebi'uun dirqama miti.\n\n✅ ምዝገባዎ ተጠናቋል። የአባልነት QR ኮድዎ ከላይ ይገኛል — በካፌ ያሳዩት። ወደ ድረ-ገጹ መመለስ ግዴታ አይደለም።",
   qrCaption: {
     om: "Kun QR keessan. Kaafee irratti agarsiisaa (suuraa isaa kaa'adhaa). Yeroo barbaaddan /qr barreessaa.",
     am: "ይህ የእርስዎ QR ነው። በካፌ ያሳዩት (ስክሪንሾት ያድርጉት)። በፈለጉ ጊዜ /qr ብለው ይጻፉ።",

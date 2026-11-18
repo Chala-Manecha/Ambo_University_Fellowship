@@ -1,3 +1,4 @@
+import { Fragment, useState } from "react";
 import { Form, useRouteLoaderData, useSearchParams } from "react-router";
 import type { Route } from "./+types/member-choices";
 import type { loader as rootLoader } from "../root";
@@ -33,21 +34,30 @@ export default function MemberChoices({ loaderData }: Route.ComponentProps) {
   const serve = pickParam(params.get("serve"), SERVICE_KEYS);
   const learn = pickParam(params.get("learn"), LEARNING_KEYS);
   const searched = loaderData.rows.filter((r) => matchesSearch(q, [r.fullName, r.studentId]));
-  const rows = searched.filter((r) => (!serve || r.services.includes(serve)) && (!learn || r.learning.includes(learn)));
+  const serveNone = params.get("serve") === "none";
+  const learnNone = params.get("learn") === "none";
+  const rows = searched.filter(
+    (r) =>
+      (serveNone ? r.services.length === 0 && !r.otherService : !serve || r.services.includes(serve)) &&
+      (learnNone ? r.learning.length === 0 : !learn || r.learning.includes(learn)),
+  );
   const serveCount = (k: string) => searched.filter((r) => r.services.includes(k) && (!learn || r.learning.includes(learn))).length;
   const learnCount = (k: string) => searched.filter((r) => r.learning.includes(k) && (!serve || r.services.includes(serve))).length;
   const submitOnChange = (e: React.ChangeEvent<HTMLSelectElement>) => e.currentTarget.form?.requestSubmit();
+  const [openId, setOpenId] = useState<string | null>(null);
 
   return (
     <section className="page wide">
       <Form method="get" className="card filter-bar" role="search">
         <input type="search" name="q" defaultValue={q} placeholder="🔍 Name or student ID" aria-label="Search" className="filter-q" />
-        <select name="serve" defaultValue={serve ?? ""} onChange={submitOnChange} aria-label="Wants to serve in" lang={lang}>
-          <option value="">Serve: all</option>
+        <select name="serve" defaultValue={serveNone ? "none" : serve ?? ""} onChange={submitOnChange} aria-label="Wants to serve in" lang={lang}>
+          <option value="">Wants to serve: any</option>
+          <option value="none">Nothing chosen</option>
           {SERVICE_KEYS.map((k) => <option key={k} value={k}>{SERVICES[k][lang]} ({serveCount(k)})</option>)}
         </select>
-        <select name="learn" defaultValue={learn ?? ""} onChange={submitOnChange} aria-label="Wants to learn" lang={lang}>
-          <option value="">Learn: all</option>
+        <select name="learn" defaultValue={learnNone ? "none" : learn ?? ""} onChange={submitOnChange} aria-label="Wants to learn" lang={lang}>
+          <option value="">Wants to learn: any</option>
+          <option value="none">Nothing chosen</option>
           {LEARNING_KEYS.map((k) => <option key={k} value={k}>{LEARNING[k][lang]} ({learnCount(k)})</option>)}
         </select>
         <button className="btn btn-primary btn-sm">Filter</button>
@@ -62,29 +72,36 @@ export default function MemberChoices({ loaderData }: Route.ComponentProps) {
           <p className="muted table-empty">Nobody matches.</p>
         ) : (
           <div className="table-wrap">
-            <table className="choices-table">
-              <thead><tr><th>Member</th><th>Wants to serve</th><th>Wants to learn</th></tr></thead>
+            <table className="table-oneline choices-compact">
+              <thead><tr><th>Member</th><th className="num">Serve</th><th className="num">Learn</th><th><span className="visually-hidden">Details</span></th></tr></thead>
               <tbody>
-                {rows.map((r) => (
-                  <tr key={r.id}>
-                    <td><strong>{r.fullName}</strong><span className="who-id">{r.studentId}</span></td>
-                    <td lang={lang}>
-                      {r.services.length || r.otherService ? (
-                        <span className="tags">
-                          {r.services.filter((k) => k in SERVICES).map((k) => <span key={k} className={`tag${k === serve ? " is-on" : ""}`}>{SERVICES[k as keyof typeof SERVICES][lang]}</span>)}
-                          {r.otherService && <span className="tag">{r.otherService}</span>}
-                        </span>
-                      ) : <span className="muted">—</span>}
-                    </td>
-                    <td lang={lang}>
-                      {r.learning.length ? (
-                        <span className="tags">
-                          {r.learning.filter((k) => k in LEARNING).map((k) => <span key={k} className={`tag${k === learn ? " is-on" : ""}`}>{LEARNING[k as keyof typeof LEARNING][lang]}</span>)}
-                        </span>
-                      ) : <span className="muted">—</span>}
-                    </td>
-                  </tr>
-                ))}
+                {rows.map((r) => {
+                  const open = openId === r.id;
+                  const serveTags = [...r.services.filter((k) => k in SERVICES).map((k) => ({ k, label: SERVICES[k as keyof typeof SERVICES][lang] })), ...(r.otherService ? [{ k: "other", label: r.otherService }] : [])];
+                  const learnTags = r.learning.filter((k) => k in LEARNING).map((k) => ({ k, label: LEARNING[k as keyof typeof LEARNING][lang] }));
+                  return (
+                    <Fragment key={r.id}>
+                      <tr>
+                        <td><strong>{r.fullName}</strong><span className="who-id">{r.studentId}</span></td>
+                        <td className="num">{serveTags.length}</td>
+                        <td className="num">{learnTags.length}</td>
+                        <td>
+                          <button type="button" className="btn btn-quiet btn-sm" aria-expanded={open} onClick={() => setOpenId(open ? null : r.id)}>
+                            {open ? "Hide" : "View"}
+                          </button>
+                        </td>
+                      </tr>
+                      {open && (
+                        <tr className="choices-detail">
+                          <td colSpan={4} lang={lang}>
+                            <p><b>Wants to serve:</b> {serveTags.length ? <span className="tags">{serveTags.map((t) => <span key={t.k} className={`tag${t.k === serve ? " is-on" : ""}`}>{t.label}</span>)}</span> : <span className="muted">nothing chosen</span>}</p>
+                            <p><b>Wants to learn:</b> {learnTags.length ? <span className="tags">{learnTags.map((t) => <span key={t.k} className={`tag${t.k === learn ? " is-on" : ""}`}>{t.label}</span>)}</span> : <span className="muted">nothing chosen</span>}</p>
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  );
+                })}
               </tbody>
             </table>
           </div>

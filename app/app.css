@@ -661,3 +661,11 @@ table tbody tr:hover td { background: var(--table-hover); }
 .welcome-bot-name { margin: 0; font-size: 1.2rem; font-weight: 700; color: var(--bar-1); }
 .welcome-open { font-size: 1.1rem; padding: 0.8rem; }
 .meal-tabs b { margin-left: 0.25rem; font-size: 0.8rem; background: #e6eef8; color: var(--bar-1); border-radius: 999px; padding: 0 0.45rem; }
+.head-signout { font: inherit; font-size: 0.85rem; font-weight: 600; background: rgb(255 255 255 / 0.15); color: #fff; border: 1px solid rgb(255 255 255 / 0.5);
+  border-radius: 10px; padding: 0.35rem 0.75rem; cursor: pointer; }
+.page-head-actions form { display: inline; }
+.choices-detail td { background: #f6f8fc; white-space: normal; }
+.choices-detail p { margin: 0.2rem 0; display: flex; flex-wrap: wrap; gap: 0.3rem; align-items: center; }
+.choices-compact td:first-child { white-space: normal; }
+.choices-compact .who-id { display: block; margin: 0; }
+.choices-compact { width: 100%; }

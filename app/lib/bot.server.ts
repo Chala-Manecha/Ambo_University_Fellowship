@@ -112,10 +112,13 @@ export async function handleUpdate(raw: unknown, env: Env) {
       name: [from.first_name, (from as { last_name?: string }).last_name].filter(Boolean).join(" ") || from.username || `Telegram ${from.id}`,
       username: from.username ?? null,
     });
+    // Right after registering: their member QR code first, then a short note (the website is optional from here)
+    if (result.ok && (await sendMemberQr(env, result.userId, msg.chat.id))) {
+      await sendMessage(env, msg.chat.id, BOT.linked, openKeyboard(env));
+      return;
+    }
     const text = result.ok ? BOT.linked : result.reason === "expired" ? BOT.linkExpired : BOT.linkTaken;
     await sendMessage(env, msg.chat.id, text, openKeyboard(env));
-    // Right after registering: their member QR code, to keep for the cafe
-    if (result.ok) await sendMemberQr(env, result.userId, msg.chat.id);
     return;
   }
   await sendMessage(env, msg.chat.id, BOT.start, openKeyboard(env));

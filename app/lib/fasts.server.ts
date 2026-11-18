@@ -20,27 +20,32 @@ export async function checkIn(
   scannedBy: string,
   today: string,
 ): Promise<CheckinResponse> {
-  const row = memberId
-    ? await db
-        .select({
-          id: schema.members.id,
-          status: schema.members.status,
-          fullName: schema.members.fullName,
-          studentId: schema.members.studentId,
-          image: schema.user.image,
-          photoKey: schema.members.photoKey,
-        })
-        .from(schema.members)
-        .innerJoin(schema.user, eq(schema.user.id, schema.members.userId))
-        .where(eq(schema.members.id, memberId))
-        .get()
-    : undefined;
-  const registration = row
-    ? await db.query.fastRegistrations.findFirst({
-        where: and(eq(schema.fastRegistrations.fastId, fast.id), eq(schema.fastRegistrations.memberId, row.id)),
-        columns: { fastType: true },
+  if (!memberId) return { kind: "invalid" };
+  // One round trip: the person, their registration and today's meals (speed matters at a busy cafe)
+  const [people, regs, todays] = await db.batch([
+    db
+      .select({
+        id: schema.members.id,
+        status: schema.members.status,
+        fullName: schema.members.fullName,
+        studentId: schema.members.studentId,
+        image: schema.user.image,
+        photoKey: schema.members.photoKey,
       })
-    : undefined;
+      .from(schema.members)
+      .innerJoin(schema.user, eq(schema.user.id, schema.members.userId))
+      .where(eq(schema.members.id, memberId)),
+    db
+      .select({ fastType: schema.fastRegistrations.fastType })
+      .from(schema.fastRegistrations)
+      .where(and(eq(schema.fastRegistrations.fastId, fast.id), eq(schema.fastRegistrations.memberId, memberId))),
+    db
+      .select({ meal: schema.fastCheckins.meal, createdAt: schema.fastCheckins.createdAt })
+      .from(schema.fastCheckins)
+      .where(and(eq(schema.fastCheckins.fastId, fast.id), eq(schema.fastCheckins.memberId, memberId), eq(schema.fastCheckins.date, today))),
+  ]);
+  const row = people[0];
+  const registration = regs[0];
   const person: Person | undefined = row
     ? { fullName: row.fullName, studentId: row.studentId, image: row.photoKey ? `/photos/${row.id}` : row.image, fastType: registration?.fastType ?? null }
     : undefined;
@@ -54,11 +59,7 @@ export async function checkIn(
   });
   if (blocked) return { ...blocked, person };
 
-  // Today's meals so far: the same meal again is "already served"; past their number, "used today's limit"
-  const todays = await db
-    .select({ meal: schema.fastCheckins.meal, createdAt: schema.fastCheckins.createdAt })
-    .from(schema.fastCheckins)
-    .where(and(eq(schema.fastCheckins.fastId, fast.id), eq(schema.fastCheckins.memberId, row!.id), eq(schema.fastCheckins.date, today)));
+  // The same meal again is "already served"; past their number a day, "used today's limit"
   const same = todays.find((t) => t.meal === meal);
   if (same) return { kind: "already", at: same.createdAt.getTime(), person };
   if (registration && dailyLimitReached(registration.fastType, todays.length)) {

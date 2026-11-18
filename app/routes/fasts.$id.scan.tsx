@@ -71,14 +71,23 @@ const RESULT_TEXT: Record<CheckinResult["kind"], { title: string; tone: "ok" | "
   invalid: { title: "Not a fellowship QR code", tone: "bad" },
 };
 
+/** After "Serve" the camera is ready again quickly; problems stay on screen longer so the scanner reads them. */
+const RESUME_OK_MS = 900;
 const RESUME_MS = 2500;
+
+/** A scan only changes one counter, which the page updates itself: don't reload the whole roster after each one. */
+export function shouldRevalidate({ formMethod, defaultShouldRevalidate }: { formMethod?: string; defaultShouldRevalidate: boolean }) {
+  return formMethod && formMethod.toUpperCase() === "POST" ? false : defaultShouldRevalidate;
+}
 /** The same QR held in front of the camera is ignored for this long after it was handled. */
 const SAME_CODE_MS = 6000;
 
 export default function Scanner({ loaderData }: Route.ComponentProps) {
   const root = useRouteLoaderData<typeof rootLoader>("root");
   const lang = root?.lang ?? DEFAULT_LANG;
-  const { fast, isOn, served, registrants } = loaderData;
+  const { fast, isOn, registrants } = loaderData;
+  // Meals served today, kept up to date here after each successful scan
+  const [served, setServed] = useState(loaderData.served);
   const [query, setQuery] = useState("");
   const matches = query.trim().length >= 2 ? registrants.filter((r) => matchesSearch(query, [r.fullName, r.studentId])).slice(0, 6) : [];
   const [meal, setMeal] = useState<Meal>(loaderData.defaultMeal);
@@ -97,12 +106,14 @@ export default function Scanner({ loaderData }: Route.ComponentProps) {
   // Show each answer, buzz, then go back to scanning
   useEffect(() => {
     if (!fetcher.data) return;
+    const ok = fetcher.data.kind === "ok";
     setShown(fetcher.data);
-    navigator.vibrate?.(fetcher.data.kind === "ok" ? 80 : [60, 60, 60]);
+    if (ok) setServed((s) => ({ ...s, [mealRef.current]: (s[mealRef.current] ?? 0) + 1 }));
+    navigator.vibrate?.(ok ? 80 : [60, 60, 60]);
     const t = setTimeout(() => {
       setShown(null);
       paused.current = false;
-    }, RESUME_MS);
+    }, ok ? RESUME_OK_MS : RESUME_MS);
     return () => clearTimeout(t);
   }, [fetcher.data]);
 

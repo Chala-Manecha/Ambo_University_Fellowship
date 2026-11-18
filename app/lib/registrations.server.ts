@@ -2,7 +2,6 @@ import { and, eq } from "drizzle-orm";
 import { MEMBER_DECISION } from "../content/bot";
 import { schema, type Db } from "../db";
 import { sendMessage } from "./bot.server";
-import { getDepartmentLeaderTelegramIds } from "./departments.server";
 import { reviewTransition } from "./registration";
 
 /** Approves or rejects a pending registration and tells the member (and department leaders) on Telegram. */
@@ -33,26 +32,12 @@ export async function reviewRegistration(env: Env, ctx: ExecutionContext, db: Db
     }
   }
 
-  // Departments chosen at registration: tell those leaders there's a request to review
+  // Approving the registration also puts them in the departments they chose on the form
   if (row && next === "active") {
-    const requests = await db
-      .select({ departmentId: schema.departmentMembers.departmentId, nameOm: schema.departments.nameOm, fullName: schema.members.fullName })
-      .from(schema.departmentMembers)
-      .innerJoin(schema.departments, eq(schema.departments.id, schema.departmentMembers.departmentId))
-      .innerJoin(schema.members, eq(schema.members.id, schema.departmentMembers.memberId))
+    await db
+      .update(schema.departmentMembers)
+      .set({ status: "active", updatedAt: new Date() })
       .where(and(eq(schema.departmentMembers.memberId, id), eq(schema.departmentMembers.status, "pending")));
-    ctx.waitUntil(
-      Promise.all(
-        requests.map(async (r) => {
-          const leaders = await getDepartmentLeaderTelegramIds(db, r.departmentId);
-          await Promise.all(
-            leaders.map((t) =>
-              sendMessage(env, t, `${r.fullName} asked to join ${r.nameOm}.\nReview: ${env.PUBLIC_SITE_URL}/departments/${r.departmentId}`),
-            ),
-          );
-        }),
-      ),
-    );
   }
 
   return { message: next === "active" ? "Registration approved." : "Registration rejected." };

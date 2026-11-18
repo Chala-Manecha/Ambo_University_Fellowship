@@ -1,11 +1,9 @@
-import { useEffect, useState } from "react";
 import {
   isRouteErrorResponse,
   useLocation,
   Link,
   Links,
   Meta,
-  NavLink,
   Outlet,
   Scripts,
   ScrollRestoration,
@@ -16,12 +14,11 @@ import { LangSwitch } from "./components/LangSwitch";
 import { botLink } from "./content/bot";
 import { HOME, SITE } from "./content/site";
 import { DEFAULT_LANG, langFromCookie } from "./lib/lang";
-import { asc, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { getDb, schema } from "./db";
 import { getUser } from "./lib/session.server";
-import { can, hasDashboard } from "./lib/permissions";
+import { hasDashboard } from "./lib/permissions";
 import { getLeaderDepartmentIds } from "./lib/departments.server";
-import { departmentName } from "./lib/departments";
 import "./app.css";
 
 export const links: Route.LinksFunction = () => [
@@ -37,13 +34,12 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   const { env } = context.cloudflare;
   const user = await getUser(request, env);
   const db = getDb(env.DB);
-  const [isMember, leaderOf, departments] = user
+  const [isMember, leaderOf] = user
     ? await Promise.all([
         db.query.members.findFirst({ where: eq(schema.members.userId, user.id), columns: { id: true } }).then(Boolean),
         getLeaderDepartmentIds(db, user.id),
-        db.query.departments.findMany({ orderBy: asc(schema.departments.sortOrder), columns: { id: true, nameOm: true, nameAm: true } }),
       ])
-    : [false, [] as string[], []];
+    : [false, [] as string[]];
   const role = user?.role ?? "member";
   return {
     lang: langFromCookie(request.headers.get("Cookie")),
@@ -52,64 +48,11 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     isMember,
     menu: user
       ? {
-          // ጽህፈት ቤት: the three positions (and other admins) — roles & positions
-          office: can(role, "member:manage"),
           // Leaders and officers switch between their member dashboard and leadership
           leadership: hasDashboard(role) || leaderOf.length > 0,
-          departments,
         }
       : null,
   };
-}
-
-/** Slide-in menu (☰) with everything this person can open, including all departments. */
-function Menu({ data, lang }: { data: NonNullable<ReturnType<typeof useRouteLoaderData<typeof loader>>>; lang: "om" | "am" }) {
-  const [open, setOpen] = useState(false);
-  const location = useLocation();
-  useEffect(() => setOpen(false), [location.pathname, location.search]);
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open]);
-  const m = data.menu;
-
-  return (
-    <>
-      <button type="button" className="menu-toggle" aria-expanded={open} aria-controls="main-menu" onClick={() => setOpen((o) => !o)}>
-        <span aria-hidden="true">☰</span> Menu
-      </button>
-      {open && <button type="button" className="menu-backdrop" aria-label="Close menu" onClick={() => setOpen(false)} />}
-      <nav id="main-menu" className={`drawer${open ? " is-open" : ""}`} aria-label="Main" aria-hidden={!open}>
-        <div className="drawer-head">
-          <strong>{data.user?.name ?? "Menu"}</strong>
-          <button type="button" className="link-btn" aria-label="Close menu" onClick={() => setOpen(false)}>✕</button>
-        </div>
-        {data.user ? (
-          <>
-            {m?.office && (
-              <NavLink to="/office" lang="am">
-                🏛️ ጽህፈት ቤት
-              </NavLink>
-            )}
-            {m?.departments.map((d) => (
-              <NavLink key={d.id} to={`/departments/${d.id}`} lang={lang}>
-                🏛️ {departmentName(d, lang)}
-              </NavLink>
-            ))}
-            <form method="post" action="/logout"><button className="drawer-signout">↪ Sign out</button></form>
-          </>
-        ) : (
-          <>
-            <NavLink to="/" end>⛪ Home</NavLink>
-            <NavLink to="/register">📝 Register</NavLink>
-            <NavLink to="/login">🔑 Sign in</NavLink>
-          </>
-        )}
-      </nav>
-    </>
-  );
 }
 
 /** Pages that belong to "Leadership"; everything else counts as the member side. */
@@ -150,7 +93,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
           </Link>
           <div className="header-actions">
             {data && !data.user && <Link to="/login" className="btn btn-quiet btn-sm">Sign in</Link>}
-            {data && <Menu data={data} lang={lang} />}
             {data && <LangSwitch current={data.lang} />}
           </div>
         </header>

@@ -13,8 +13,19 @@ function base64url(buf: ArrayBuffer) {
     .replace(/=+$/, "");
 }
 
+/** The HMAC key is imported once per worker, not on every scan. */
+const keys = new Map<string, Promise<CryptoKey>>();
+function hmacKey(secret: string) {
+  let k = keys.get(secret);
+  if (!k) {
+    k = crypto.subtle.importKey("raw", enc.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+    keys.set(secret, k);
+  }
+  return k;
+}
+
 async function signature(memberId: string, secret: string) {
-  const key = await crypto.subtle.importKey("raw", enc.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const key = await hmacKey(secret);
   const mac = await crypto.subtle.sign("HMAC", key, enc.encode(`member-qr:${memberId}`));
   return base64url(mac).slice(0, 22); // 132 bits is plenty and keeps the QR small
 }

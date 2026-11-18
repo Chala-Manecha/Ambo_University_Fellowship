@@ -51,7 +51,11 @@ export default function Lead({ loaderData }: Route.ComponentProps) {
   const { office, departments } = loaderData;
   return (
     <section className="page wide">
-      <PageHead title="All departments" sub="Open one to manage it." />
+      <PageHead
+        title="All departments"
+        sub="Open one to manage it."
+        actions={<form method="post" action="/logout"><button className="head-signout">↪ Sign out</button></form>}
+      />
       <div className="dept-grid">
         {office && (
           <Link to="/office" className="dept-card dept-card--office">
